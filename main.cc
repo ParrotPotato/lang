@@ -1,5 +1,4 @@
-#include <exception>
-#include <execution>
+#include <csetjmp>
 #define PRINT_EXPRESSION
 #include <stdlib.h>
 #include <string.h>
@@ -59,6 +58,7 @@ enum TokenType {
     TokenType_print,
     TokenType_and,
     TokenType_or,
+    TokenType_defer,
     
     TokenType_identifier,
     TokenType_string_literal,
@@ -105,8 +105,9 @@ enum OperatorType {
     OperatorType_divide,
     OperatorType_and,
     OperatorType_or,
-    OperatorType_assign,
     OperatorType_count,
+    OperatorType_equal,
+    OperatorType_not_equal,
 };
 OperatorType get_operator_type(TokenType type);
 
@@ -212,12 +213,6 @@ Expression read_only_conv_group_to_expression(GroupExp * gp) {
 }
     
 
-
-void lpad(int pad) {
-    for(int i = 0; i < pad; i++)
-    printf(" ");
-}
-
 void print_expression(Expression exp) {
 
     printf("(");
@@ -238,7 +233,7 @@ void print_expression(Expression exp) {
     else if (exp.type == ExpressionType_literal_string) {
         int len = exp.exp.string.value.len;
         char * data = exp.exp.string.value.data;
-        printf("str_lit(%.*s)", len, data);
+        printf("str_lit(\"%.*s\")", len, data);
     }
     else if (exp.type == ExpressionType_binary) {
         printf("op(%d) ", exp.exp.binary.opt.type);
@@ -268,8 +263,11 @@ void print_expression(Expression exp) {
 enum StatementType {
     StatementType_none,
     StatementType_assign,
+    StatementType_if,
     StatementType_count,
 };
+
+struct Statement;
 
 struct AssignStat {
     StringView target; 
@@ -277,7 +275,8 @@ struct AssignStat {
 };
 
 struct IfStat {
-
+    Statement * condition_prefix; // for declaring stuff inside the if condition already 
+    Expression * condition_expression;
 };
 
 struct Statement {
@@ -439,7 +438,14 @@ Expression parse_expression(Parser * parser, int testing = 0) {
         }
         return left;
     }
+
     return {};
+}
+
+Statement parse_if_statement(Parser * parser){
+    Statement smt;
+
+    return smt;
 }
 
 Statement parse_assignment_statement(Parser * parser) {
@@ -563,6 +569,7 @@ ParsedTokens fetch_tokens(String file_source) {
         switch(At){
             case 0: token.type = TokenType_eof; break;
             case ',': token.type = TokenType_comma; break;
+            case ':': token.type = TokenType_comma; break;
             case ';': token.type = TokenType_semi_colon; break;
             case '}': token.type = TokenType_closing_brace; break;
             case '{': token.type = TokenType_opening_brace; break;
@@ -659,6 +666,8 @@ ParsedTokens fetch_tokens(String file_source) {
                         token.type = TokenType_and;
                     else if (_INTERNAL_CHECK_TOKEN_MATCH("or"))
                         token.type = TokenType_or;
+                    else if (_INTERNAL_CHECK_TOKEN_MATCH("defer"))
+                        token.type = TokenType_or;
 #undef _INTERNAL_CHECK_TOKEN_MATCH
                 }
             }break;
@@ -725,6 +734,10 @@ OperatorType get_operator_type(TokenType type) {
         return OperatorType_mult;
     } else if (type == TokenType_forward_slash){
         return OperatorType_divide;
+    } else if (type == TokenType_double_equal){
+        return OperatorType_equal;
+    } else if (type == TokenType_bang_equal){
+        return OperatorType_not_equal;
     }
     return OperatorType_none;
 }
@@ -732,8 +745,22 @@ bool is_unary_operator(TokenType type) {
     return (type == TokenType_plus || type == TokenType_minus || type == TokenType_bang || type == TokenType_forward_slash);
 }
 
+// NOTE(nitesh): check which enums are missing here
 bool is_binary_operator(TokenType type) {
-    return (type == TokenType_plus || type == TokenType_minus || type == TokenType_astricks);
+    switch (type){
+        case TokenType_plus:
+        case TokenType_minus:
+        case TokenType_astricks:
+        case TokenType_forward_slash:
+        case TokenType_and:
+        case TokenType_or:
+        case TokenType_equal:
+        case TokenType_double_equal:
+        case TokenType_bang_equal:
+            return true;
+            
+    }
+    return false;
 }
 
 bool is_alpha(char a) {
