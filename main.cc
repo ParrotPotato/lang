@@ -1,3 +1,6 @@
+#include <exception>
+#include <execution>
+#define PRINT_EXPRESSION
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -33,8 +36,9 @@ enum TokenType {
     TokenType_plus,
     TokenType_minus,
     TokenType_astricks,
-    TokneType_forward_slash, // can this be simply a 'divide', are there more uses for / other than divide and comment ? 
-
+    TokenType_forward_slash, // can this be simply a 'divide', i
+                             // are there more uses for / other 
+                             // than divide and comment ? 
     TokenType_equal,
     TokenType_double_equal,
 
@@ -68,6 +72,7 @@ bool is_unary_operator(TokenType type);
 struct Token {
     TokenType  type;
     StringView at;
+    int        line_no;
 };
 bool is_alpha(char a);
 bool is_number(char a);
@@ -134,15 +139,14 @@ struct BinaryExp {
     Operator opt;
 };
 
-struct CallExp {
-    StringView call_name;
-    Expression * args;
-    int arg_count;
-};
-
 struct GroupExp {
     Expression * expressions;
     int expression_count;
+};
+
+struct CallExp {
+    StringView call_name;
+    GroupExp   group;
 };
 
 enum ExpressionType {
@@ -163,46 +167,102 @@ enum ExpressionType {
     ExpressionType_count,
 };
 
+const char * expression_name(ExpressionType type){
+    switch(type){
+        case ExpressionType_none:
+        return  "ExpressionType_none";
+        case ExpressionType_literal_number:
+        return  "literal_number";
+        case ExpressionType_literal_string:
+        return  "literal_string";
+        case ExpressionType_name:
+        return  "name";
+        case ExpressionType_binary:
+        return  "binary";
+        case ExpressionType_unary:
+        return  "unary";
+        case ExpressionType_call:
+        return  "call";
+        case ExpressionType_group:
+        return  "group";
+        case ExpressionType_count:
+        return  "ExpressionType_count";
+    }
+    return "NO_MATCH_FOUND";
+}
+
 struct Expression {
     ExpressionType type;
     union {
-        BinaryExp binary;
-        UniaryExp unary;
-        NumberLiteralExp number;
-        StringLiteralExp string;
-        NameExp name;
-        CallExp call;
+        BinaryExp           binary;
+        UniaryExp           unary;
+        NumberLiteralExp    number;
+        StringLiteralExp    string;
+        GroupExp            group;
+        NameExp             name;
+        CallExp             call;
     } exp ;
 };
+
+Expression read_only_conv_group_to_expression(GroupExp * gp) {
+    Expression result;
+    result.type = ExpressionType_group;
+    result.exp.group = *gp;
+    return result;
+}
+    
+
 
 void lpad(int pad) {
     for(int i = 0; i < pad; i++)
     printf(" ");
 }
 
-void print_expression(Expression exp, int depth = 0) {
-    lpad(depth); printf("expressio type:%d\n", exp.type);
+void print_expression(Expression exp) {
+
+    printf("(");
+
+    printf("type(%s) ", expression_name(exp.type));
     if (exp.type == ExpressionType_name) {
-        lpad(depth+1);printf("name: %.*s\n", (int)exp.exp.name.value.len, exp.exp.name.value.data);
+        int len = exp.exp.name.value.len;
+        char * data = exp.exp.name.value.data;
+        printf("name(%.*s)", len, data);
     }
     else if (exp.type == ExpressionType_literal_number) {
-        lpad(depth+1);printf("value: %d\n", exp.exp.number.value);
+        printf("num_lit(%d)", exp.exp.number.value);
     }
     else if (exp.type == ExpressionType_unary) {
-        lpad(depth+1);printf("operator: %d\n", exp.exp.unary.opt.type);
-        lpad(depth+1);printf("right\n");
-        print_expression(*exp.exp.unary.exp, depth + 1);
+        printf("op(%d) ", exp.exp.unary.opt.type);
+        print_expression(*exp.exp.unary.exp);
     }
     else if (exp.type == ExpressionType_literal_string) {
-        lpad(depth+1);printf("value; %.*s\n", (int)exp.exp.string.value.len, exp.exp.string.value.data);
+        int len = exp.exp.string.value.len;
+        char * data = exp.exp.string.value.data;
+        printf("str_lit(%.*s)", len, data);
     }
     else if (exp.type == ExpressionType_binary) {
-        lpad(depth+1);printf("operator: %d\n", exp.exp.binary.opt.type);
-        lpad(depth+1);printf("left\n");
-        print_expression(*exp.exp.binary.left, depth + 1);
-        lpad(depth+1);printf("right\n");
-        print_expression(*exp.exp.binary.right, depth + 1);
+        printf("op(%d) ", exp.exp.binary.opt.type);
+        print_expression(*exp.exp.binary.left);
+        print_expression(*exp.exp.binary.right);
     }
+    else if (exp.type == ExpressionType_group) {
+        printf("(");
+        for(int i = 0 ; i < exp.exp.group.expression_count ; i++){
+            print_expression(exp.exp.group.expressions[i]);
+            if (i != exp.exp.group.expression_count - 1) {
+                printf(", ");
+            }
+        }
+        printf(")");
+    } else if (exp.type == ExpressionType_call) {
+        int len = exp.exp.call.call_name.len;
+        char * data = exp.exp.call.call_name.data;
+        printf("call_name(%.*s)", len, data); 
+        Expression ro_exp = read_only_conv_group_to_expression(&exp.exp.call.group);
+        print_expression(ro_exp);
+    }
+
+    printf(")");
 }
 
 enum StatementType {
@@ -233,11 +293,21 @@ void print_statement(Statement stmt) {
         printf("asign target: %.*s\n", (int)stmt.state.assign.target.len, stmt.state.assign.target.data);
         printf("value \n");
         print_expression(stmt.state.assign.value);
+        printf("\n");
     }
 }
 
-Expression parse_expression(Parser * parser) {
+Expression parse_expression(Parser * parser, int testing = 0) {
+
+    if (parser->curr().type == TokenType_semi_colon) return {};
+
     if(parser->curr().type == TokenType_number_literal) {
+
+        if (testing){
+            printf("parsing and setting number literal \n");
+            printf("%.*s\n", (int)parser->curr().at.len, parser->curr().at.data);
+        }
+
         Expression left = {};
         left.type = ExpressionType_literal_number;
         char buffer[1024] = {};
@@ -258,6 +328,11 @@ Expression parse_expression(Parser * parser) {
         return left;
     }
     else if (parser->curr().type == TokenType_string_literal){
+        if (testing){
+            printf("parsing and setting string literal \n");
+            printf("%.*s\n", (int)parser->curr().at.len, parser->curr().at.data);
+        }
+
         Expression left = {};
         left.type = ExpressionType_literal_string;
         left.exp.string.value = parser->curr().at;
@@ -293,34 +368,12 @@ Expression parse_expression(Parser * parser) {
         }
         return left;
     }
-    else if(parser->curr().type == TokenType_identifier) {
-        // not sure if this is required anymore or not 
-        if (parser->peek(1).type == TokenType_equal) {
-            Expression result = {};
-            result.type = ExpressionType_name;
-            result.exp.name.value = parser->curr().at;
-            parser->next();
-            return result;
+    else if (parser->curr().type == TokenType_opening_paran) {
+        if (testing){
+            printf("parsing and group expression start\n");
         }
-        // handling all binary operators: 
-        // currently does not handle anything like a function call of a group expression
-        else if (is_binary_operator(parser->peek(1).type)) {
-            Expression result = {};
-            result.type = ExpressionType_binary;
-            result.exp.binary.left = ( Expression *) calloc(1, sizeof(Expression));
-            result.exp.binary.left->type = ExpressionType_name;
-            result.exp.binary.left->exp.name.value = parser->curr().at;
-            parser->next();
-            result.exp.binary.opt.type = get_operator_type(parser->curr().type);
-            parser->next();
-            result.exp.binary.right = (Expression *) calloc(1, sizeof(Expression));
-            *result.exp.binary.right = parse_expression(parser);
-            return result;
-        }
-
-    }
-    if (parser->peek(1).type == TokenType_opening_paran)
-    {
+        Expression left = {};
+        left.type = ExpressionType_group;
         parser->next();
         int group_capacity = 10;
         Expression *expressions = (Expression *)calloc(10, sizeof(Expression));
@@ -332,11 +385,59 @@ Expression parse_expression(Parser * parser) {
             }
             expressions[group_size] = parse_expression(parser);
             group_size+=1;
-            if (parser->curr().type == TokenType_closing_paran || parser->curr().type == TokenType_comma) {
+            if (parser->curr().type == TokenType_comma) {
                 parser->next();
             }
         }
+        if (parser->curr().type == TokenType_closing_paran) {
+            parser->next();
+        }
         expressions = (Expression *)realloc(expressions, sizeof(Expression) * group_size);
+        left.exp.group.expressions = expressions;
+        left.exp.group.expression_count = group_size;
+        if (is_binary_operator(parser->curr().type)) {
+            Expression parent= {};
+            parent.type = ExpressionType_binary;
+            parent.exp.binary.left =  (Expression *)calloc(1, sizeof(Expression));
+            *parent.exp.binary.left = left;
+            parent.exp.binary.right = (Expression *)calloc(1, sizeof(Expression));
+            parser->next();
+            *parent.exp.binary.right = parse_expression(parser);
+            return parent;
+        }
+        return left;
+    }
+    else if(parser->curr().type == TokenType_identifier) {
+        if (testing){
+            printf("parsing identifier start\n");
+            printf("%.*s\n", (int)parser->curr().at.len, parser->curr().at.data);
+        }
+
+        Expression left = {};
+        left.type = ExpressionType_name;
+        left.exp.name.value = parser->curr().at;
+        parser->next();
+
+        printf("name read as %.*s\n", (int)left.exp.name.value.len, left.exp.name.value.data);
+
+        if (is_binary_operator(parser->curr().type)) {
+            Expression parent = {};
+            parent.type = ExpressionType_binary;
+            parent.exp.binary.left = (Expression *) calloc(1, sizeof(Expression));
+            *parent.exp.binary.left = left;
+            parent.exp.binary.right = (Expression *) calloc(1, sizeof(Expression));
+            parser->next();
+            *parent.exp.binary.right = parse_expression(parser);
+            return parent;
+        } else if (parser->curr().type == TokenType_opening_paran) {
+            printf("parsign group for call type expression\n");
+            Expression parent = {};
+            parent.type = ExpressionType_call;
+            parent.exp.call.call_name = left.exp.name.value;
+            parent.exp.call.group  = parse_expression(parser, 1).exp.group;
+            return parent;
+        }
+        return left;
     }
     return {};
 }
@@ -345,7 +446,6 @@ Statement parse_assignment_statement(Parser * parser) {
     Statement statement;
     statement.type = StatementType_assign;
     statement.state.assign.target = parser->curr().at;
-    // skipping the '=' in the process;
     parser->next();
     parser->next();
     statement.state.assign.value = parse_expression(parser);
@@ -357,14 +457,29 @@ Statement * parse_statement(Parser * parser, int * out_statement_count) {
     Statement * statements = (Statement *) malloc(sizeof(Statement) * MAX_STATEMENT_COUNT);
     int statement_idx = 0;
     while (!parser->end() && parser->curr().type != TokenType_eof) {
+        printf("parser token type: %d\n", parser->curr().type);
+        print_token(parser->curr());
         if (parser->curr().type == TokenType_identifier) {
+
+            printf("parser_identifiers");
+
             if (parser->peek(1).type == TokenType_equal) {
-                statements[statement_idx++] = parse_assignment_statement(parser);
+
+#ifdef PRINT_EXPRESSION
+                printf("------- statement -----\n");
+                Statement smt = parse_assignment_statement(parser);
+                print_statement(smt);
+#endif
             }
         }
         if (parser->curr().type == TokenType_semi_colon) {
+            printf("parser_semi_colon");
             parser->next();
             continue;
+        }
+
+        if (parser->curr().type == 2){
+            break;
         }
     }
     *out_statement_count = statement_idx;
@@ -377,18 +492,16 @@ int main(){
     printf("%s", text.data);
     printf("source ---- \n%.*s\n ---- end", (int) text.len, text.data);
     ParsedTokens parsed_token = fetch_tokens(text);
+#ifdef PRINT_TOKEN
     for(int i = 0 ; i < parsed_token.count; i++) {
         print_token(parsed_token.tokens[i]);
     }
+#endif
     Parser parser;
     parser.pt = parsed_token;
     parser.idx = 0;
     int statement_count = 0;
     Statement * statements = parse_statement(&parser, &statement_count);
-    for(int i = 0;  i < statement_count; i++) {
-        printf("statement -----\n");
-        print_statement(statements[i]);
-    }
     return 0;
 }
 
@@ -410,7 +523,7 @@ void eat_white_space(Cursor * cursor) {
 }
 
 void print_token(Token token) {
-    printf("type : %d token : %.*s\n", token.type, (int)token.at.len, token.at.data);
+    printf("line_no: %d type : %d token : %.*s\n", token.line_no, token.type, (int)token.at.len, token.at.data);
 }
 
 
@@ -422,25 +535,31 @@ ParsedTokens fetch_tokens(String file_source) {
     Cursor cursor = {};
     cursor.at = file_source.data;
 
+    int line_number = 0;
+
 #define _INTERNAL_CURSOR_AT_EOF() (cursor.at == (file_source.data + file_source.len))
     while( !_INTERNAL_CURSOR_AT_EOF() && *cursor.at != 0) {
 
         while(!_INTERNAL_CURSOR_AT_EOF() && is_white_space(*cursor.at)) {
+            if (*cursor.at == '\n') {
+               line_number+=1; 
+            }
             cursor.at += 1;
         }
         if (_INTERNAL_CURSOR_AT_EOF()) break;
 
         Token token = {};
-        // default to a symbole
+
         token.at.data = cursor.at;
         token.at.len = 1;
+        token.line_no = line_number;
 
         char At = *cursor.at;
         unsigned long long start = cursor.at - file_source.data;
 
         cursor.at += 1;
 
-        // printf("processing %c \n", At);
+        printf("processing %c \n", At);
         switch(At){
             case 0: token.type = TokenType_eof; break;
             case ',': token.type = TokenType_comma; break;
@@ -449,7 +568,7 @@ ParsedTokens fetch_tokens(String file_source) {
             case '{': token.type = TokenType_opening_brace; break;
             case '(': token.type = TokenType_opening_paran; break;
             case ')': token.type = TokenType_closing_paran; break;
-            case '!': { // can be bang, but can also be bang_equal
+            case '!': {
                 if (!_INTERNAL_CURSOR_AT_EOF() && *cursor.at == '=')  {
                     token.type = TokenType_bang_equal;
                     token.at.len = 2;
@@ -469,7 +588,7 @@ ParsedTokens fetch_tokens(String file_source) {
                     token.type = TokenType_equal;
                 }
             } break;
-            case '/': token.type = TokneType_forward_slash; break;
+            case '/': token.type = TokenType_forward_slash; break;
             case '*': token.type = TokenType_astricks; break;
             case '-': token.type = TokenType_minus; break;
             case '+': token.type = TokenType_plus; break;
@@ -480,7 +599,8 @@ ParsedTokens fetch_tokens(String file_source) {
                     while(!_INTERNAL_CURSOR_AT_EOF() && is_number(*cursor.at)) {
                         cursor.at += 1;
                     }
-                    if (!is_white_space(*cursor.at) && *cursor.at != ';') {
+                    if (!is_white_space(*cursor.at) && *cursor.at != ';' && *cursor.at != ',' && *cursor.at != ')') {
+                        printf("cursor.at %c\n", *cursor.at);
                         printf("error failed to parse number correctly");
                         exit(1);
                     }
@@ -553,6 +673,7 @@ ParsedTokens fetch_tokens(String file_source) {
             tokens = (Token *)realloc(tokens, sizeof(Token) * token_capacity * 2);
             token_capacity = 2 * token_capacity;
         }
+
         tokens[token_count] = token;
         token_count += 1;
     }
@@ -602,13 +723,13 @@ OperatorType get_operator_type(TokenType type) {
         return OperatorType_subtract;
     } else if (type == TokenType_astricks) {
         return OperatorType_mult;
-    } else if (type == TokneType_forward_slash){
+    } else if (type == TokenType_forward_slash){
         return OperatorType_divide;
     }
     return OperatorType_none;
 }
 bool is_unary_operator(TokenType type) {
-    return (type == TokenType_plus || type == TokenType_minus || type == TokenType_bang || type == TokneType_forward_slash);
+    return (type == TokenType_plus || type == TokenType_minus || type == TokenType_bang || type == TokenType_forward_slash);
 }
 
 bool is_binary_operator(TokenType type) {
