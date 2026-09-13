@@ -1,0 +1,42 @@
+// in the language the assignment are an expression 
+// similar to go and c 
+
+x = 10;
+b = 20;
+a = b + x;
+
+
+x = 10;
+  =
+ / \
+x   10
+
+a = b + x;
+  =
+ / \
+a   +
+   / \
+  b   x
+
+
+abs(x, y)
+
+     [call]
+    /    \
+abs      [group]
+           |
+          (x, y)
+
+
+abs(x, y) => sum(x, y) => x + y || 
+function call is just a polish notation for operator 
+operator and functions are interchangable 
+
+we can try to parse all the functions signature first
+and then use that signature to further tighten the ast,
+would that be useful ? 
+
+assignment operator is not an expression, it is a statement 
+which makes it so that it cannot be used for handling 
+
+this language will have defer statements 
