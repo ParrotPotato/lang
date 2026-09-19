@@ -5,7 +5,14 @@
 
 #define TOKEN_LIST(MACRO_FUNCTION) \
     MACRO_FUNCTION(none)\
+    MACRO_FUNCTION(dot)\
     MACRO_FUNCTION(comma)\
+    MACRO_FUNCTION(opening_square_bracket)\
+    MACRO_FUNCTION(closing_square_bracket)\
+    MACRO_FUNCTION(opening_angle_bracket)\
+    MACRO_FUNCTION(closing_angle_bracket)\
+    MACRO_FUNCTION(less_than_equal)\
+    MACRO_FUNCTION(greater_than_equal)\
     MACRO_FUNCTION(opening_paran)\
     MACRO_FUNCTION(closing_paran)\
     MACRO_FUNCTION(opening_brace)\
@@ -35,6 +42,9 @@
     MACRO_FUNCTION(string_literal)\
     MACRO_FUNCTION(number_literal)\
     MACRO_FUNCTION(eof)\
+    MACRO_FUNCTION(continue)\
+    MACRO_FUNCTION(break)\
+    MACRO_FUNCTION(switch)\
     MACRO_FUNCTION(count)
 
 #define OPERATOR_LIST(MACRO_FUNCTION) \
@@ -64,6 +74,10 @@
     MACRO_FUNCTION(none)\
     MACRO_FUNCTION(assign)\
     MACRO_FUNCTION(if)\
+    MACRO_FUNCTION(return)\
+    MACRO_FUNCTION(defer)\
+    MACRO_FUNCTION(func_decl)\
+    MACRO_FUNCTION(var_decl)\
     MACRO_FUNCTION(count)
 
 enum TokenType {

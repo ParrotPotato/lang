@@ -1,3 +1,28 @@
+/*
+TODO: 
+- implementing different 'statement' types (if, else, func & var decl, return, defer, for)
+    - assign // done 
+    - if statement 
+    - func decl 
+    - var decl 
+    - return  // done 
+    - defer
+- implementing a struct dereference, array and array indexing 
+- define language grammar 
+    - how are things declared
+    - how are thiings asisgned 
+    - what are the semantic rules around what should be done when, specifically, around 
+        - multiple returns 
+        - loop definitions
+        - scope and variable shadowing 
+        - in scope structs and function declaration
+        - (maybe if we are really competent at doing the above tasks): think about how macro's can work, i really like how powerful the macros in C / C++ are - see what can be archived when we do that type of thing
+- define type speficitaion for the language 
+  int's flot's strings -> are they c like are they not c like, maps, tables etc etc)
+- implementing a lua like interepreter which can then allow our programming language to call function 
+  and refer to data structurs from out cpp file 
+*/
+
 #include <csetjmp>
 #define PRINT_EXPRESSION
 #include <stdlib.h>
@@ -117,44 +142,44 @@ Expression read_only_conv_group_to_expression(GroupExp * gp) {
 
 void print_full_expression(Expression exp) {
 
-    printf("(");
+    printf(" (");
 
-    printf("type(%s) ", print_expression(exp.type));
+    printf("type(%s)", print_expression(exp.type));
     if (exp.type == ExpressionType_name) {
         int len = exp.exp.name.value.len;
         char * data = exp.exp.name.value.data;
-        printf("name(%.*s)", len, data);
+        printf(" name(%.*s)", len, data);
     }
     else if (exp.type == ExpressionType_literal_number) {
-        printf("num_lit(%d)", exp.exp.number.value);
+        printf(" num_lit(%d)", exp.exp.number.value);
     }
     else if (exp.type == ExpressionType_unary) {
-        printf("op(%d) ", exp.exp.unary.opt.type);
+        printf(" op(%s)", print_operator(exp.exp.unary.opt.type));
         print_full_expression(*exp.exp.unary.exp);
     }
     else if (exp.type == ExpressionType_literal_string) {
         int len = exp.exp.string.value.len;
         char * data = exp.exp.string.value.data;
-        printf("str_lit(\"%.*s\")", len, data);
+        printf(" str_lit(\"%.*s\")", len, data);
     }
     else if (exp.type == ExpressionType_binary) {
-        printf("op(%d) ", exp.exp.binary.opt.type);
+        printf(" op(%s)", print_operator(exp.exp.binary.opt.type));
         print_full_expression(*exp.exp.binary.left);
         print_full_expression(*exp.exp.binary.right);
     }
     else if (exp.type == ExpressionType_group) {
-        printf("(");
+        printf(" (");
         for(int i = 0 ; i < exp.exp.group.expression_count ; i++){
             print_full_expression(exp.exp.group.expressions[i]);
             if (i != exp.exp.group.expression_count - 1) {
-                printf(", ");
+                printf(",");
             }
         }
         printf(")");
     } else if (exp.type == ExpressionType_call) {
         int len = exp.exp.call.call_name.len;
         char * data = exp.exp.call.call_name.data;
-        printf("call_name(%.*s)", len, data); 
+        printf(" call_name(%.*s)", len, data); 
         Expression ro_exp = read_only_conv_group_to_expression(&exp.exp.call.group);
         print_full_expression(ro_exp);
     }
@@ -164,6 +189,11 @@ void print_full_expression(Expression exp) {
 
 struct Statement;
 
+struct BlockStat {
+    Statement * statements;
+    int statement_count;
+};
+
 struct AssignStat {
     StringView target; 
     Expression value;
@@ -171,22 +201,29 @@ struct AssignStat {
 
 struct IfStat {
     Statement * condition_prefix; // for declaring stuff inside the if condition already 
-    Expression * condition_expression;
+    Expression condition_expression;
+    BlockStat if_block;
+    BlockStat else_block;
+};
+
+struct ReturnStat {
+    Expression exp;
 };
 
 struct Statement {
     StatementType type;
     union {
         AssignStat assign;
-    } state ;
+        ReturnStat ret;
+        IfStat     ifcon; // if condition
+    } smt ;
 };
 
 void print_statement(Statement stmt) {
-    printf("stmt type: %d\n", stmt.type);
     if (stmt.type  == StatementType_assign) {
-        printf("asign target: %.*s\n", (int)stmt.state.assign.target.len, stmt.state.assign.target.data);
-        printf("value \n");
-        print_full_expression(stmt.state.assign.value);
+        int len = stmt.smt.assign.target.len;
+        char * data = stmt.smt.assign.target.data;
+        printf("%.*s = ", len, data); print_full_expression(stmt.smt.assign.value);
         printf("\n");
     }
 }
@@ -228,6 +265,7 @@ GroupExp parse_group_expression(Parser *parser) {
 Expression parse_right_side_of_binary_expression(Parser *parser, Expression left) {
     Expression parent = {};
     parent.type = ExpressionType_binary;
+    parent.exp.binary.opt.type = get_operator_type(parser->curr().type);
     parent.exp.binary.left = (Expression *)calloc(1, sizeof(Expression));
     *parent.exp.binary.left = left;
     parent.exp.binary.right = (Expression *)calloc(1, sizeof(Expression));
@@ -261,6 +299,7 @@ CallExp parse_call_expression(Parser * parser) {
     return exp;
 }
 
+// never consume ;  that should be consumed at the statement level 
 Expression parse_expression(Parser * parser) {
     if (parser->curr().type == TokenType_semi_colon) return {};
     if(parser->curr().type == TokenType_number_literal) {
@@ -327,50 +366,89 @@ Expression parse_expression(Parser * parser) {
     return {};
 }
 
-Statement parse_if_statement(Parser * parser){
-    Statement smt;
+Statement parse_statement(Parser * parser);
 
+Statement parse_return_statment(Parser * parser){
+    Statement smt;
+    smt.type = StatementType_return;
+    parser->next();
+    Expression exp = parse_expression(parser);
+    smt.smt.ret.exp = parse_expression(parser);
     return smt;
 }
 
 Statement parse_assignment_statement(Parser * parser) {
     Statement statement;
     statement.type = StatementType_assign;
-    statement.state.assign.target = parser->curr().at;
+    statement.smt.assign.target = parser->curr().at;
     parser->next();
     parser->next();
-    statement.state.assign.value = parse_expression(parser);
+    statement.smt.assign.value = parse_expression(parser);
     return statement;
 }
 
+Statement parse_block_statment (Parser * parser) {
+
+    int smt_capacity = 10;
+    int smt_size = 0;
+    Statement * smts = (Statement *) calloc(10, sizeof(Statement));
+    if (parser->curr().type == TokenType_opening_brace) {
+        while (parser->curr().type != TokenType_closing_brace) {
+            parser->next();
+            Statement statment = parse_statement(parser);
+            if (smt_size == smt_capacity) {
+                smts = (Statement *) realloc(smts, sizeof(statment) * 2 * smt_capacity);
+                smt_capacity *= 2;
+            }
+            smts[smt_size] = statment;
+            smt_size+=1;
+        }
+        parser->next();
+    }
+    smts = (Statement *) realloc(smts, sizeof(Statement) * smt_size);
+}
+
+Statement parse_if_statement (Parser * parser) {
+    Statement smt;
+
+    parser->next();
+    int index = 0;
+    while(parser->peek(index).type != TokenType_semi_colon && parser->peek(index).type != TokenType_opening_brace) index++;
+
+    if (parser->peek(index).type == TokenType_semi_colon) {
+        Statement smt = parse_statement(parser);
+    }
+    Expression conditional = parse_expression(parser);
+
+    // dodo nitesh: add parsing logic for block else and else block statments 
+
+    smt.type = StatementType_if;
+    smt.smt.ifcon.condition_prefix = (Statement *) calloc(1, sizeof(smt));
+    smt.smt.ifcon.condition_expression = conditional;
+
+    return smt;
+}
+
+Statement parse_statement(Parser * parser) {
+    while (parser->curr().type == TokenType_semi_colon) parser->next();
+
+    if (parser->curr().type == TokenType_identifier) {
+        if (parser->peek(1).type == TokenType_equal) {
+            return parse_assignment_statement(parser);
+        }
+    } 
+    else if (parser->curr().type == TokenType_return) {
+        return parse_return_statment(parser);
+    }
+}
+
 #define MAX_STATEMENT_COUNT 100
-Statement * parse_statement(Parser * parser, int * out_statement_count) {
+Statement * parse_statements(Parser * parser, int * out_statement_count) {
     Statement * statements = (Statement *) malloc(sizeof(Statement) * MAX_STATEMENT_COUNT);
     int statement_idx = 0;
     while (!parser->end() && parser->curr().type != TokenType_eof) {
-        printf("parser token type: %d\n", parser->curr().type);
-        print_full_token(parser->curr());
-        if (parser->curr().type == TokenType_identifier) {
-
-            printf("parser_identifiers");
-
-            if (parser->peek(1).type == TokenType_equal) {
-
-#ifdef PRINT_EXPRESSION
-                printf("------- statement -----\n");
-                Statement smt = parse_assignment_statement(parser);
-                print_statement(smt);
-#endif
-            }
-        }
-        if (parser->curr().type == TokenType_semi_colon) {
-            parser->next();
-            continue;
-        }
-
-        if (parser->curr().type == 2){
-            break;
-        }
+        Statement statment = parse_statement(parser);
+        print_statement(statment);
     }
     *out_statement_count = statement_idx;
     return statements;
@@ -378,9 +456,6 @@ Statement * parse_statement(Parser * parser, int * out_statement_count) {
 
 int main(){
     String text = load_entire_file("a.nit");
-    printf("source loaded with length : %d", (int)text.len);
-    printf("%s", text.data);
-    printf("source ---- \n%.*s\n ---- end", (int) text.len, text.data);
     ParsedTokens parsed_token = fetch_tokens(text);
 #ifdef PRINT_TOKEN
     for(int i = 0 ; i < parsed_token.count; i++) {
@@ -391,7 +466,7 @@ int main(){
     parser.pt = parsed_token;
     parser.idx = 0;
     int statement_count = 0;
-    Statement * statements = parse_statement(&parser, &statement_count);
+    Statement * statements = parse_statements(&parser, &statement_count);
     return 0;
 }
 
@@ -415,7 +490,6 @@ void eat_white_space(Cursor * cursor) {
 void print_full_token(Token token) {
     printf("line_no: %d type : %d token : %.*s\n", token.line_no, token.type, (int)token.at.len, token.at.data);
 }
-
 
 ParsedTokens fetch_tokens(String file_source) {
     Token * tokens = NULL;
@@ -449,9 +523,34 @@ ParsedTokens fetch_tokens(String file_source) {
 
         cursor.at += 1;
 
-        printf("processing %c \n", At);
         switch(At){
             case 0: token.type = TokenType_eof; break;
+            case '[': token.type = TokenType_opening_square_bracket;break;
+            case ']': token.type = TokenType_closing_square_bracket;break;
+            case '<': 
+            {
+                if (!_INTERNAL_CURSOR_AT_EOF() && *cursor.at == '=') {
+                    token.type = TokenType_less_than_equal;
+                    token.at.len = 2;
+                    cursor.at += 1;
+                }
+                else {
+                    token.type = TokenType_opening_angle_bracket;
+                }
+            }; break;
+            case '>': 
+            {
+                if (!_INTERNAL_CURSOR_AT_EOF() && *cursor.at == '=') {
+                    token.type = TokenType_greater_than_equal;
+                    token.at.len = 2;
+                    cursor.at += 1;
+                }
+                else {
+                    token.type = TokenType_closing_angle_bracket;
+                }
+            }; break;
+            
+            case '.': token.type = TokenType_dot; break;
             case ',': token.type = TokenType_comma; break;
             case ':': token.type = TokenType_comma; break;
             case ';': token.type = TokenType_semi_colon; break;
@@ -609,7 +708,7 @@ OperatorType get_operator_type(TokenType type) {
     if (type == TokenType_plus) {
         return OperatorType_add;
     } else if (type == TokenType_and) {
-        return OperatorType_add;
+        return OperatorType_and;
     } else if (type == TokenType_or) {
         return OperatorType_or;
     } else if (type == TokenType_minus) {
@@ -641,8 +740,11 @@ bool is_binary_operator(TokenType type) {
         case TokenType_equal:
         case TokenType_double_equal:
         case TokenType_bang_equal:
+        case TokenType_opening_angle_bracket: // less than 
+        case TokenType_closing_angle_bracket: // greater than 
+        case TokenType_less_than_equal:
+        case TokenType_greater_than_equal:
             return true;
-            
     }
     return false;
 }

@@ -4,5 +4,5 @@ a = x + b + 10;
 a = -10 + 8;
 y = (y);
 x = (10, 20) + 10;
-b = alternate(10, 20, 22, c);
+b = alternate(10, 20, 22, c) + 22;
 c = "another one bytes the dust, another one gone and another one gone and nother one bytes the dust";
