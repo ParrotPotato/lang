@@ -1,8 +1,7 @@
-x = 10;
-b = 20;
-a = x + b + 10;
-a = -10 + 8;
-y = (y);
-x = (10, 20) + 10;
-b = alternate(10, 20, 22, c) + 22;
-c = "another one bytes the dust, another one gone and another one gone and nother one bytes the dust";
+if x == 2 {
+    x = 20;
+    y = 29 + 32;
+} else {
+    x = internal(x + y);
+    time = convert_to_time(gettime() * 1000);
+}

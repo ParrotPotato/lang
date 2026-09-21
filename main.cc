@@ -2,7 +2,7 @@
 TODO: 
 - implementing different 'statement' types (if, else, func & var decl, return, defer, for)
     - assign // done 
-    - if statement 
+    - if statement  // ongoing - testing
     - func decl 
     - var decl 
     - return  // done 
@@ -23,8 +23,8 @@ TODO:
   and refer to data structurs from out cpp file 
 */
 
-#include <csetjmp>
 #define PRINT_EXPRESSION
+#define PRINT_TOKEN
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -58,7 +58,7 @@ struct Token {
 bool is_alpha(char a);
 bool is_number(char a);
 bool is_white_space(char a);
-void print_full_token(Token token);
+void print_full_token(int idx, Token token);
 
 struct ParsedTokens {
     Token * tokens;
@@ -203,7 +203,7 @@ struct IfStat {
     Statement * condition_prefix; // for declaring stuff inside the if condition already 
     Expression condition_expression;
     BlockStat if_block;
-    BlockStat else_block;
+    BlockStat * else_block;
 };
 
 struct ReturnStat {
@@ -215,7 +215,8 @@ struct Statement {
     union {
         AssignStat assign;
         ReturnStat ret;
-        IfStat     ifcon; // if condition
+        IfStat     ifcon; // if statements
+        BlockStat  block;
     } smt ;
 };
 
@@ -226,6 +227,30 @@ void print_statement(Statement stmt) {
         printf("%.*s = ", len, data); print_full_expression(stmt.smt.assign.value);
         printf("\n");
     }
+    else if (stmt.type == StatementType_block) {
+        printf(" -- block start -- \n");
+        for(int i = 0 ; i < stmt.smt.block.statement_count ; i++) {
+            print_statement(stmt.smt.block.statements[i]);
+        }
+        printf(" -- block end -- \n");
+    }
+    else if (stmt.type == StatementType_if ){
+        IfStat ifst = stmt.smt.ifcon;
+        printf(" -- if start -- \n");
+        if (ifst.condition_prefix)  {
+            printf("condition:");
+            print_statement(*ifst.condition_prefix);
+            printf("\n");
+        }
+        printf("expression: ");
+        print_full_expression(ifst.condition_expression);
+        if (ifst.else_block) {
+            printf("else : ");
+            print_statement((Statement){.type = StatementType_block, .smt.block = *ifst.else_block});
+            printf("\n");
+        }
+        printf(" -- if end -- \n");
+    } 
 }
 Expression parse_expression(Parser * parser);
 
@@ -301,8 +326,10 @@ CallExp parse_call_expression(Parser * parser) {
 
 // never consume ;  that should be consumed at the statement level 
 Expression parse_expression(Parser * parser) {
+    printf("- parsing expression\n");
     if (parser->curr().type == TokenType_semi_colon) return {};
     if(parser->curr().type == TokenType_number_literal) {
+        printf("- found number literal\n");
         Expression left = {};
         left.type = ExpressionType_literal_number;
         left.exp.number = parse_number_literal_expression(parser);
@@ -312,6 +339,7 @@ Expression parse_expression(Parser * parser) {
         return left;
     }
     else if (parser->curr().type == TokenType_string_literal){
+        printf("- found string literal\n");
         Expression left = {};
         left.type = ExpressionType_literal_string;
         left.exp.string = parse_string_literal_expression(parser);
@@ -321,6 +349,7 @@ Expression parse_expression(Parser * parser) {
         return left;
     }
     else if(is_unary_operator(parser->curr().type)) {
+        printf("- found unary operator\n");
         Expression left = {};
         left.type = ExpressionType_unary;
         left.exp.unary.opt.type = get_operator_type(parser->curr().type);
@@ -333,6 +362,7 @@ Expression parse_expression(Parser * parser) {
         return left;
     }
     else if (parser->curr().type == TokenType_opening_paran) {
+        printf("- found opening paran\n");
         Expression left = {};
         left.type = ExpressionType_group;
         left.exp.group = parse_group_expression(parser);
@@ -342,8 +372,10 @@ Expression parse_expression(Parser * parser) {
         return left;
     }
     else if(parser->curr().type == TokenType_identifier) {
+        printf("- found identifier\n");
         // this is a function call
         if (parser->peek(1).type == TokenType_opening_paran) {
+            printf("- parsing identifier as call expression\n");
             CallExp call = parse_call_expression(parser);
             Expression exp = {};
             exp.type = ExpressionType_call;
@@ -354,10 +386,12 @@ Expression parse_expression(Parser * parser) {
             return exp;
         }
         else {
+            printf("- parsing identifier name expression\n");
             Expression left = {};
             left.type = ExpressionType_name;
             left.exp.name = parse_name_expression(parser);
             if (is_binary_operator(parser->curr().type)) {
+                printf("- parsing binary expression name of the left\n");
                 return parse_right_side_of_binary_expression(parser, left);
             }
             return left;
@@ -368,77 +402,151 @@ Expression parse_expression(Parser * parser) {
 
 Statement parse_statement(Parser * parser);
 
-Statement parse_return_statment(Parser * parser){
-    Statement smt;
-    smt.type = StatementType_return;
+ReturnStat parse_return_statment(Parser * parser){
+    ReturnStat ret;
     parser->next();
-    Expression exp = parse_expression(parser);
-    smt.smt.ret.exp = parse_expression(parser);
-    return smt;
+    ret.exp = parse_expression(parser);
+    return ret;
 }
 
-Statement parse_assignment_statement(Parser * parser) {
-    Statement statement;
-    statement.type = StatementType_assign;
-    statement.smt.assign.target = parser->curr().at;
+AssignStat parse_assignment_statement(Parser * parser) {
+    printf("[] parsing assignment statment\n");
+    AssignStat ass;
+    ass.target = parser->curr().at;
     parser->next();
     parser->next();
-    statement.smt.assign.value = parse_expression(parser);
-    return statement;
+    ass.value = parse_expression(parser);
+    return ass;
 }
 
-Statement parse_block_statment (Parser * parser) {
-
+BlockStat parse_block_statment (Parser * parser) { // tested
+    BlockStat block = {};
     int smt_capacity = 10;
     int smt_size = 0;
     Statement * smts = (Statement *) calloc(10, sizeof(Statement));
-    if (parser->curr().type == TokenType_opening_brace) {
-        while (parser->curr().type != TokenType_closing_brace) {
-            parser->next();
-            Statement statment = parse_statement(parser);
-            if (smt_size == smt_capacity) {
-                smts = (Statement *) realloc(smts, sizeof(statment) * 2 * smt_capacity);
-                smt_capacity *= 2;
-            }
-            smts[smt_size] = statment;
-            smt_size+=1;
+    printf("> parsing block statmeent start\n");
+    if (parser->curr().type == TokenType_opening_brace) { 
+        printf("> consuming opening brace\n");
+        parser->next(); // consuming the opening brace
+        while (parser->curr().type != TokenType_eof && parser->curr().type != TokenType_closing_brace) {
+            Statement statment = parse_statement(parser); // parsing all the statements till we encounter a closing brace
+            while(parser->curr().type == TokenType_semi_colon) parser->next();
         }
-        parser->next();
+        printf("block statment: %s token %.*s value \n", print_token(parser->curr().type), (int)parser->curr().at.len, parser->curr().at.data);
+        if (parser->curr().type == TokenType_eof) {
+            printf("closing bracked not found for block statement");
+            exit(1);
+        }
+        printf("> consuming closing brace\n");
+        parser->next();  // consuming the closing brace
+    } else {
+        printf("token : %s value : %.*s\n",
+               print_token(parser->curr().type),
+               (int)parser->curr().at.len,
+               parser->curr().at.data);
+        printf("failed to find opening brace for block expression\n");
+        exit(1);
     }
+    printf("> parsing block statmeent ends\n");
     smts = (Statement *) realloc(smts, sizeof(Statement) * smt_size);
+    block.statements = smts;
+    block.statement_count = smt_size;
+    return block;
 }
 
-Statement parse_if_statement (Parser * parser) {
-    Statement smt;
-
+IfStat parse_if_statement (Parser * parser) {
+    printf("- starting parsing if statement\n");
+    IfStat ifsmt;
     parser->next();
     int index = 0;
+    printf("- peeking forward\n");
     while(parser->peek(index).type != TokenType_semi_colon && parser->peek(index).type != TokenType_opening_brace) index++;
-
     if (parser->peek(index).type == TokenType_semi_colon) {
+        printf("- found condition prefix\n");
         Statement smt = parse_statement(parser);
+        ifsmt.condition_prefix = (Statement *) calloc(1, sizeof(smt));
+        parser->next(); 
+    }  else {
+        printf("- no condition prefix found\n");
     }
-    Expression conditional = parse_expression(parser);
+    printf("- parsing conditional expression\n");
+    Expression conditional = parse_expression(parser); 
+    ifsmt.condition_expression = conditional;
+    if (parser->curr().type != TokenType_opening_brace) {
+        printf("line-no %d: opening brace not found after if condition parsing", parser->curr().line_no);
+        exit(1);
+    }
+    printf("- parsing block statement\n");
+    BlockStat ifblock = parse_block_statment(parser);
+    if (parser->curr().type == TokenType_else) {
+        parser->next();
+        printf("- parsing else block\n");
+        if (parser->curr().type == TokenType_if) {
+            IfStat elif = parse_if_statement(parser);
+            BlockStat block = {};
+            block.statement_count = 1;
+            block.statements = (Statement *) calloc(1, sizeof(Statement));
+            block.statements[0].type = StatementType_if;
+            block.statements[0].smt.ifcon = elif ;
+            ifsmt.else_block = (BlockStat *) calloc(1, sizeof(BlockStat));
+            *ifsmt.else_block = block;
+        } else {
+            if (parser->curr().type != TokenType_opening_brace) {
+                printf("line-no %d: opening brace not found after else phrase", parser->curr().line_no);
+                exit(1);
+            }
+            BlockStat block = parse_block_statment(parser);
+            ifsmt.else_block = (BlockStat *) calloc(1, sizeof(BlockStat));
+            *ifsmt.else_block = block;
+        }
+    } else {
+        printf("- no else block found\n");
 
-    // dodo nitesh: add parsing logic for block else and else block statments 
-
-    smt.type = StatementType_if;
-    smt.smt.ifcon.condition_prefix = (Statement *) calloc(1, sizeof(smt));
-    smt.smt.ifcon.condition_expression = conditional;
-
-    return smt;
+    }
+    return ifsmt;
 }
 
 Statement parse_statement(Parser * parser) {
-    while (parser->curr().type == TokenType_semi_colon) parser->next();
+    printf("[line: %d] starting statmeent parsing with token : %s\n", parser->curr().line_no, print_token(parser->curr().type));
+    printf("[line: %d] text string %.*s\n", parser->curr().line_no, (int)parser->curr().at.len, (char *)parser->curr().at.data);
+
+    // we don't care about handling this situation
+    if (parser->curr().type == TokenType_semi_colon) {
+        parser->next();
+        return (Statement) {.type = StatementType_none};
+    }
 
     if (parser->curr().type == TokenType_identifier) {
         if (parser->peek(1).type == TokenType_equal) {
-            return parse_assignment_statement(parser);
+            AssignStat ass = parse_assignment_statement(parser);
+            return (Statement) {
+                .type = StatementType_assign,
+                .smt.assign = ass
+            };
         }
     } 
     else if (parser->curr().type == TokenType_return) {
-        return parse_return_statment(parser);
+        ReturnStat ret = parse_return_statment(parser);
+        return (Statement) {
+            .type = StatementType_return,
+            .smt.ret = ret
+        };
+    }
+    else if (parser->curr().type == TokenType_if) {
+        IfStat ifstat = parse_if_statement(parser);
+        return (Statement) {
+            .type = StatementType_if,
+            .smt.ifcon = ifstat,
+        };
+    } else if (parser->curr().type == TokenType_opening_brace) {
+        BlockStat block = parse_block_statment(parser);
+        return (Statement) {
+            .type = StatementType_block,
+            .smt.block = block,
+        };
+    } else {
+        printf("invalid token to start statement\n");
+        exit(1);
     }
 }
 
@@ -448,9 +556,16 @@ Statement * parse_statements(Parser * parser, int * out_statement_count) {
     int statement_idx = 0;
     while (!parser->end() && parser->curr().type != TokenType_eof) {
         Statement statment = parse_statement(parser);
-        print_statement(statment);
+        //print_statement(statment);
     }
     *out_statement_count = statement_idx;
+
+    int idx = 0;
+    while (idx!=statement_idx){
+        printf("printing statmeent idx[%d]\n", idx);
+        print_statement(statements[idx]);
+    }
+
     return statements;
 };
 
@@ -459,7 +574,7 @@ int main(){
     ParsedTokens parsed_token = fetch_tokens(text);
 #ifdef PRINT_TOKEN
     for(int i = 0 ; i < parsed_token.count; i++) {
-        print_full_token(parsed_token.tokens[i]);
+        print_full_token(i, parsed_token.tokens[i]);
     }
 #endif
     Parser parser;
@@ -487,8 +602,8 @@ void eat_white_space(Cursor * cursor) {
     }
 }
 
-void print_full_token(Token token) {
-    printf("line_no: %d type : %d token : %.*s\n", token.line_no, token.type, (int)token.at.len, token.at.data);
+void print_full_token(int idx, Token token) {
+    printf("index : %d, line_no: %d type : %d token : %.*s\n", idx, token.line_no, token.type, (int)token.at.len, token.at.data);
 }
 
 ParsedTokens fetch_tokens(String file_source) {
@@ -628,7 +743,7 @@ ParsedTokens fetch_tokens(String file_source) {
                     token.at.data = (char *) file_source.data  + start ;
                     token.at.len = (size_t)(cursor.at - file_source.data - start);
                     token.type = TokenType_identifier;
-#define _INTERNAL_CHECK_TOKEN_MATCH(x) (token.at.len == strlen(x) && strncmp(token.at.data, x, strlen(x)))
+#define _INTERNAL_CHECK_TOKEN_MATCH(x) (token.at.len == strlen(x) && (strncmp(token.at.data, x, strlen(x)) == 0))
                     if (_INTERNAL_CHECK_TOKEN_MATCH("true"))
                         token.type = TokenType_bool_true;
                     else if (_INTERNAL_CHECK_TOKEN_MATCH("false"))
@@ -650,7 +765,13 @@ ParsedTokens fetch_tokens(String file_source) {
                     else if (_INTERNAL_CHECK_TOKEN_MATCH("or"))
                         token.type = TokenType_or;
                     else if (_INTERNAL_CHECK_TOKEN_MATCH("defer"))
-                        token.type = TokenType_or;
+                        token.type = TokenType_defer;
+                    else if (_INTERNAL_CHECK_TOKEN_MATCH("continue"))
+                        token.type = TokenType_continue;
+                    else if (_INTERNAL_CHECK_TOKEN_MATCH("break"))
+                        token.type = TokenType_break;
+                    else if (_INTERNAL_CHECK_TOKEN_MATCH("switch"))
+                        token.type = TokenType_switch;
 #undef _INTERNAL_CHECK_TOKEN_MATCH
                 }
             }break;

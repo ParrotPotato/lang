@@ -38,13 +38,13 @@
     MACRO_FUNCTION(and)\
     MACRO_FUNCTION(or)\
     MACRO_FUNCTION(defer)\
+    MACRO_FUNCTION(continue)\
+    MACRO_FUNCTION(break)\
+    MACRO_FUNCTION(switch)\
     MACRO_FUNCTION(identifier)\
     MACRO_FUNCTION(string_literal)\
     MACRO_FUNCTION(number_literal)\
     MACRO_FUNCTION(eof)\
-    MACRO_FUNCTION(continue)\
-    MACRO_FUNCTION(break)\
-    MACRO_FUNCTION(switch)\
     MACRO_FUNCTION(count)
 
 #define OPERATOR_LIST(MACRO_FUNCTION) \
@@ -76,6 +76,7 @@
     MACRO_FUNCTION(if)\
     MACRO_FUNCTION(return)\
     MACRO_FUNCTION(defer)\
+    MACRO_FUNCTION(block)\
     MACRO_FUNCTION(func_decl)\
     MACRO_FUNCTION(var_decl)\
     MACRO_FUNCTION(count)
