@@ -1,12 +1,13 @@
 /*
 TODO: 
 - implementing different 'statement' types (if, else, func & var decl, return, defer, for)
-    - assign // done 
-    - if statement  // ongoing - testing
-    - func decl 
+    - assign          // done 
+    - if statement    // done
+    - block statmeent // done 
+    - func decl     
     - var decl 
     - return  // done 
-    - defer
+    - defer   // 
 - implementing a struct dereference, array and array indexing 
 - define language grammar 
     - how are things declared
@@ -519,8 +520,8 @@ IfStat parse_if_statement (Parser * parser) {
 }
 
 Statement parse_statement(Parser * parser) {
-    //printf("[line: %d] starting statmeent parsing with token : %s\n", parser->curr().line_no, print_token(parser->curr().type));
-    //printf("[line: %d] text string %.*s\n", parser->curr().line_no, (int)parser->curr().at.len, (char *)parser->curr().at.data);
+    printf("[line: %d] starting statmeent parsing with token : %s\n", parser->curr().line_no, print_token(parser->curr().type));
+    printf("[line: %d] text string %.*s\n", parser->curr().line_no, (int)parser->curr().at.len, (char *)parser->curr().at.data);
 
     Statement ret = {};
 
@@ -642,6 +643,7 @@ ParsedTokens fetch_tokens(String file_source) {
         }
         if (_INTERNAL_CURSOR_AT_EOF()) break;
 
+        bool was_comment = false;
         Token token = {};
 
         token.at.data = cursor.at;
@@ -650,8 +652,8 @@ ParsedTokens fetch_tokens(String file_source) {
 
         char At = *cursor.at;
         unsigned long long start = cursor.at - file_source.data;
-
         cursor.at += 1;
+        
 
         switch(At){
             case 0: token.type = TokenType_eof; break;
@@ -708,7 +710,19 @@ ParsedTokens fetch_tokens(String file_source) {
                     token.type = TokenType_equal;
                 }
             } break;
-            case '/': token.type = TokenType_forward_slash; break;
+            case '/': {
+                if (!_INTERNAL_CURSOR_AT_EOF() && *cursor.at == '/')  {
+                    // this is a single line comment now, please skip till the \n
+                    while(*cursor.at != '\n') {
+                        cursor.at += 1;
+                        token.at.len += 1;
+                    }
+                    was_comment = true;
+                }
+                else {
+                    token.type = TokenType_forward_slash;
+                }
+            } break;
             case '*': token.type = TokenType_astricks; break;
             case '-': token.type = TokenType_minus; break;
             case '+': token.type = TokenType_plus; break;
@@ -801,9 +815,11 @@ ParsedTokens fetch_tokens(String file_source) {
             tokens = (Token *)realloc(tokens, sizeof(Token) * token_capacity * 2);
             token_capacity = 2 * token_capacity;
         }
+        if (!was_comment) {
+            tokens[token_count] = token;
+            token_count += 1;
+        }
 
-        tokens[token_count] = token;
-        token_count += 1;
     }
 #undef _INTERNAL_CURSOR_AT_EOF
 
