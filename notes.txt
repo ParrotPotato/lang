@@ -1,0 +1,32 @@
+==> pratt-praser
+
+
+
+1 + 5 * 4 + 4 * 4  = 4 * 9 + 1
+
+
+this is the desired tree which we want from parsing 
+      +
+     / \
+    1   +
+       / \ 
+      /   \
+     *     *
+    / \   / \
+    5  4  4 4
+
+
+key insight, 
+- recursive decent parsing gives right leaning tree, which is not really wrong all the time
+- looped parsing (i don't know what that is called, very similar to recursive decent parsing) gives left leaning tree, which is also not wrong all the time 
+
+
+what we need now is to know which version fo the tree we want for implementing the expression parsing system
+
+
+so for the expression 
+
+1 + 2 * 3  = 4
+
+
+it reads one in the leaf 
