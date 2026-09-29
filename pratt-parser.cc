@@ -64,8 +64,6 @@ const char * op_str(TokenType type){
     }
 }
 
-
-
 struct Leaf { int value; };
 struct Ex;
 struct Binary{ Ex *left, *right; TokenType op; };
@@ -139,23 +137,12 @@ Ex parse_expression(Parser & parser, int min_prec) {
     Ex left = parse_leaf(parser.curr());
     parser.next();
 
-    printf("min_val : %d left: ", min_prec);
-    left.print();
-    printf("\n");
-
     while(parser.curr().type != TokenType_eof){
         TokenType op = parser.curr().type;
         if (op_val(op) == 0 || op_val(op) < min_prec) break;
         parser.next();
-
         Ex right = parse_expression(parser, op_val(op));
-        printf("right: ");
-        right.print();
-        printf("\n");
         left = create_binary_expression(&left, &right, op);
-        printf("new left: ");
-        left.print();
-        printf("\n");
     }
 
     return left;

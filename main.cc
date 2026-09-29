@@ -85,6 +85,8 @@ struct Parser {
 OperatorType get_operator_type(TokenType type);
 
 struct Operator {
+    const char * str;
+    float left, right;
     OperatorType type;
 };
 
@@ -146,30 +148,32 @@ Expression read_only_conv_group_to_expression(GroupExp * gp) {
 
 void print_full_expression(Expression exp) {
 
-    printf(" (");
-
-    printf("type(%s)", print_expression(exp.type));
+    // printf("type(%s)", print_expression(exp.type));
     if (exp.type == ExpressionType_name) {
         int len = exp.exp.name.value.len;
         char * data = exp.exp.name.value.data;
-        printf(" name(%.*s)", len, data);
+        printf(" %.*s", len, data);
     }
     else if (exp.type == ExpressionType_literal_number) {
-        printf(" num_lit(%d)", exp.exp.number.value);
+        printf(" %d", exp.exp.number.value);
     }
     else if (exp.type == ExpressionType_unary) {
-        printf(" op(%s)", print_operator(exp.exp.unary.opt.type));
+    printf(" (");
+        printf("%s", exp.exp.unary.opt.str);
         print_full_expression(*exp.exp.unary.exp);
+    printf(")");
     }
     else if (exp.type == ExpressionType_literal_string) {
         int len = exp.exp.string.value.len;
         char * data = exp.exp.string.value.data;
-        printf(" str_lit(\"%.*s\")", len, data);
+        printf(" \"%.*s\"", len, data);
     }
     else if (exp.type == ExpressionType_binary) {
-        printf(" op(%s)", print_operator(exp.exp.binary.opt.type));
+    printf(" (");
+        printf("%s", exp.exp.binary.opt.str);
         print_full_expression(*exp.exp.binary.left);
         print_full_expression(*exp.exp.binary.right);
+    printf(")");
     }
     else if (exp.type == ExpressionType_group) {
         printf(" (");
@@ -183,12 +187,10 @@ void print_full_expression(Expression exp) {
     } else if (exp.type == ExpressionType_call) {
         int len = exp.exp.call.call_name.len;
         char * data = exp.exp.call.call_name.data;
-        printf(" call_name(%.*s)", len, data); 
+        printf(" %.*s", len, data); 
         Expression ro_exp = read_only_conv_group_to_expression(&exp.exp.call.group);
         print_full_expression(ro_exp);
     }
-
-    printf(")");
 }
 
 struct Statement;
@@ -259,7 +261,8 @@ void print_full_statement(Statement stmt) {
         printf(" -- if end -- \n");
     } 
 }
-Expression parse_expression(Parser * parser);
+
+Expression pratt_parse_expression(Parser * parser, float min_val);
 
 NameExp parse_name_expression(Parser * parser) {
     NameExp name = {};
@@ -279,7 +282,7 @@ GroupExp parse_group_expression(Parser *parser) {
             expressions = (Expression *)realloc(expressions, sizeof(Expression) * 2 * group_capacity);
             group_capacity *= 2;
         }
-        expressions[group_size] = parse_expression(parser);
+        expressions[group_size] = pratt_parse_expression(parser, 0);
         group_size += 1;
         if (parser->curr().type == TokenType_comma) {
             parser->next();
@@ -294,17 +297,6 @@ GroupExp parse_group_expression(Parser *parser) {
     return group;
 }
 
-Expression parse_right_side_of_binary_expression(Parser *parser, Expression left) {
-    Expression parent = {};
-    parent.type = ExpressionType_binary;
-    parent.exp.binary.opt.type = get_operator_type(parser->curr().type);
-    parent.exp.binary.left = (Expression *)calloc(1, sizeof(Expression));
-    *parent.exp.binary.left = left;
-    parent.exp.binary.right = (Expression *)calloc(1, sizeof(Expression));
-    parser->next();
-    *parent.exp.binary.right = parse_expression(parser);
-    return parent;
-}
 
 NumberLiteralExp parse_number_literal_expression(Parser *parser) {
     NumberLiteralExp exp = {};
@@ -331,18 +323,16 @@ CallExp parse_call_expression(Parser * parser) {
     return exp;
 }
 
-// never consume ;  that should be consumed at the statement level 
-Expression parse_expression(Parser * parser) {
-    printf("- parsing expression\n");
-    if (parser->curr().type == TokenType_semi_colon) return {};
-    if(parser->curr().type == TokenType_number_literal) {
+Expression parse_node(Parser * parser) {
+    if (parser->curr().type == TokenType_semi_colon) {
+        printf("unexpected ; encountered exit(-1)");
+        exit(1);
+    }
+    else if(parser->curr().type == TokenType_number_literal) {
         printf("- found number literal\n");
         Expression left = {};
         left.type = ExpressionType_literal_number;
         left.exp.number = parse_number_literal_expression(parser);
-        if (is_binary_operator(parser->curr().type)) {
-            return parse_right_side_of_binary_expression(parser, left);
-        }
         return left;
     }
     else if (parser->curr().type == TokenType_string_literal){
@@ -350,32 +340,24 @@ Expression parse_expression(Parser * parser) {
         Expression left = {};
         left.type = ExpressionType_literal_string;
         left.exp.string = parse_string_literal_expression(parser);
-        if (is_binary_operator(parser->curr().type)){
-            return parse_right_side_of_binary_expression(parser, left);
-        }
         return left;
     }
-    else if(is_unary_operator(parser->curr().type)) {
-        printf("- found unary operator\n");
-        Expression left = {};
-        left.type = ExpressionType_unary;
-        left.exp.unary.opt.type = get_operator_type(parser->curr().type);
-        left.exp.unary.exp = (Expression *) calloc(1, sizeof(Expression));
-        parser->next();
-        *left.exp.unary.exp = parse_expression(parser);
-        if (is_binary_operator(parser->curr().type)) {
-            return parse_right_side_of_binary_expression(parser, left);
-        }
-        return left;
-    }
+    // NOTE(nitesh): we need to think about this one again 
+    //else if(is_unary_operator(parser->curr().type)) {
+    //    printf("- found unary operator\n");
+    //    Expression left = {};
+    //    left.type = ExpressionType_unary;
+    //    left.exp.unary.opt.type = get_operator_type(parser->curr().type);
+    //    left.exp.unary.exp = (Expression *) calloc(1, sizeof(Expression));
+    //    parser->next();
+    //    *left.exp.unary.exp = parse_expression(parser);
+    //    return left;
+    //}
     else if (parser->curr().type == TokenType_opening_paran) {
         printf("- found opening paran\n");
         Expression left = {};
         left.type = ExpressionType_group;
-        left.exp.group = parse_group_expression(parser);
-        if (is_binary_operator(parser->curr().type)) {
-            return parse_right_side_of_binary_expression(parser, left);
-        }
+        left.exp.group = parse_group_expression(parser); // parse the entire thing, this works perfectly
         return left;
     }
     else if(parser->curr().type == TokenType_identifier) {
@@ -387,9 +369,6 @@ Expression parse_expression(Parser * parser) {
             Expression exp = {};
             exp.type = ExpressionType_call;
             exp.exp.call = call;
-            if (is_binary_operator(parser->curr().type)) {
-                return parse_right_side_of_binary_expression(parser, exp);
-            }
             return exp;
         }
         else {
@@ -397,14 +376,35 @@ Expression parse_expression(Parser * parser) {
             Expression left = {};
             left.type = ExpressionType_name;
             left.exp.name = parse_name_expression(parser);
-            if (is_binary_operator(parser->curr().type)) {
-                printf("- parsing binary expression name of the left\n");
-                return parse_right_side_of_binary_expression(parser, left);
-            }
             return left;
         }
     }
-    return {};
+    return Expression{};
+}
+
+Expression create_binary_expression(Expression * left, Expression * right, Operator op) {
+    Expression binary = {};
+    binary.type = ExpressionType_binary;
+    binary.exp.binary.left = (Expression *)malloc(sizeof(Expression));
+    binary.exp.binary.right = (Expression *)malloc(sizeof(Expression));
+    *binary.exp.binary.left = *left;
+    *binary.exp.binary.right = *right;
+    binary.exp.binary.opt =  op;
+    return binary;
+}
+
+Operator get_operator(TokenType type);
+Expression pratt_parse_expression(Parser * parser, float min_val) {
+    // moves the parser ahead if requried
+    Expression left_node = parse_node(parser);
+    while (true) {
+        Operator op = get_operator(parser->curr().type);
+        if (op.left == 0.0f || min_val > op.left) break;
+        parser->next();
+        Expression right_node = pratt_parse_expression(parser, op.right);
+        left_node = create_binary_expression(&left_node, &right_node, op);
+    }
+    return left_node;
 }
 
 Statement parse_statement(Parser * parser);
@@ -412,7 +412,7 @@ Statement parse_statement(Parser * parser);
 ReturnStat parse_return_statment(Parser * parser){
     ReturnStat ret = {};
     parser->next();
-    ret.exp = parse_expression(parser);
+    ret.exp = pratt_parse_expression(parser, 0.0);
     return ret;
 }
 
@@ -422,7 +422,7 @@ AssignStat parse_assignment_statement(Parser * parser) {
     ass.target = parser->curr().at;
     parser->next();
     parser->next();
-    ass.value = parse_expression(parser);
+    ass.value = pratt_parse_expression(parser, 0.0);
     return ass;
 }
 
@@ -483,7 +483,7 @@ IfStat parse_if_statement (Parser * parser) {
         printf("- no condition prefix found\n");
     }
     printf("- parsing conditional expression\n");
-    Expression conditional = parse_expression(parser); 
+    Expression conditional = pratt_parse_expression(parser, 0.0); 
     ifsmt.condition_expression = conditional;
     if (parser->curr().type != TokenType_opening_brace) {
         printf("line-no %d: opening brace not found after if condition parsing", parser->curr().line_no);
@@ -586,7 +586,7 @@ Statement * parse_statements(Parser * parser, int * out_statement_count) {
 };
 
 int main(){
-    String text = load_entire_file("a.nit");
+    String text = load_entire_file("b.nit");
     ParsedTokens parsed_token = fetch_tokens(text);
 #ifdef PRINT_TOKEN
     for(int i = 0 ; i < parsed_token.count; i++) {
@@ -876,6 +876,29 @@ OperatorType get_operator_type(TokenType type) {
     }
     return OperatorType_none;
 }
+
+Operator get_operator(TokenType type) {
+    if (type == TokenType_astricks) {
+        return Operator{ .str="*",.left = 6.0f, .right = 6.1f, .type = OperatorType_mult, };
+    } else if (type == TokenType_forward_slash){
+        return Operator{ .str="/", .left = 6.0f, .right = 6.1f, .type = OperatorType_divide, };
+    } else if (type == TokenType_plus) {
+        return Operator{ .str = "+", .left = 5.0f, .right = 5.1f, .type = OperatorType_add, };
+    } else if (type == TokenType_minus) {
+        return Operator{ .str = "-", .left = 5.0f, .right = 5.1f, .type = OperatorType_subtract, };
+    } else if (type == TokenType_double_equal){
+        return Operator{ .str="==", .left = 4.0f, .right = 4.1f, .type = OperatorType_equal, };
+    } else if (type == TokenType_bang_equal){
+        return Operator{ .str="!=", .left = 4.0f, .right = 4.1f, .type = OperatorType_not_equal, };
+    } else if (type == TokenType_and) {
+        return Operator{ .str = "and", .left = 3.0f, .right = 3.1f, .type = OperatorType_and, };
+    } else if (type == TokenType_or) {
+        return Operator{ .str = "or", .left = 2.0f, .right = 2.1f, .type = OperatorType_or, };
+    } else {
+        return Operator{ .str="not_operator", .left = 0.0f, .right = 0.0f, .type = OperatorType_none};
+    }
+}
+
 bool is_unary_operator(TokenType type) {
     return (type == TokenType_plus || type == TokenType_minus || type == TokenType_bang || type == TokenType_forward_slash);
 }
