@@ -50,6 +50,7 @@ String load_entire_file(const char * file_path);
 struct Cursor {
     char * at;
 };
+
 void eat_white_space(Cursor * cursor);
 bool is_binary_operator(TokenType type);
 bool is_unary_operator(TokenType type);
@@ -323,6 +324,7 @@ CallExp parse_call_expression(Parser * parser) {
     return exp;
 }
 
+Operator get_operator(TokenType type);
 Expression parse_node(Parser * parser) {
     if (parser->curr().type == TokenType_semi_colon) {
         printf("unexpected ; encountered exit(-1)");
@@ -342,17 +344,20 @@ Expression parse_node(Parser * parser) {
         left.exp.string = parse_string_literal_expression(parser);
         return left;
     }
-    // NOTE(nitesh): we need to think about this one again 
-    //else if(is_unary_operator(parser->curr().type)) {
-    //    printf("- found unary operator\n");
-    //    Expression left = {};
-    //    left.type = ExpressionType_unary;
-    //    left.exp.unary.opt.type = get_operator_type(parser->curr().type);
-    //    left.exp.unary.exp = (Expression *) calloc(1, sizeof(Expression));
-    //    parser->next();
-    //    *left.exp.unary.exp = parse_expression(parser);
-    //    return left;
-    //}
+    // on rethinking this,  i think it can only be a number, name, or an group expression (that too a size 0), 
+    // anything else here would not make sense, since this is a unary operator 
+    else if(is_unary_operator(parser->curr().type)) {
+        printf("- found unary operator\n");
+        Expression left = {};
+        left.type = ExpressionType_unary;
+        left.exp.unary.opt = get_operator(parser->curr().type);
+        left.exp.unary.exp = (Expression *) calloc(1, sizeof(Expression));
+        parser->next();
+        *left.exp.unary.exp = pratt_parse_expression(parser, 100); // NOTE(nitesh): 100 here is supposed to be something really really big, 
+                                                                   // if we ever read the binding power of hundred incrementally, this 
+                                                                   // language might have gone out of hand a bit .. haha
+        return left;
+    }
     else if (parser->curr().type == TokenType_opening_paran) {
         printf("- found opening paran\n");
         Expression left = {};
@@ -393,7 +398,6 @@ Expression create_binary_expression(Expression * left, Expression * right, Opera
     return binary;
 }
 
-Operator get_operator(TokenType type);
 Expression pratt_parse_expression(Parser * parser, float min_val) {
     // moves the parser ahead if requried
     Expression left_node = parse_node(parser);
@@ -598,6 +602,7 @@ int main(){
     parser.idx = 0;
     int statement_count = 0;
     Statement * statements = parse_statements(&parser, &statement_count);
+    printf("%.*s\n", (int)text.len, text.data);
     return 0;
 }
 
@@ -878,24 +883,15 @@ OperatorType get_operator_type(TokenType type) {
 }
 
 Operator get_operator(TokenType type) {
-    if (type == TokenType_astricks) {
-        return Operator{ .str="*",.left = 6.0f, .right = 6.1f, .type = OperatorType_mult, };
-    } else if (type == TokenType_forward_slash){
-        return Operator{ .str="/", .left = 6.0f, .right = 6.1f, .type = OperatorType_divide, };
-    } else if (type == TokenType_plus) {
-        return Operator{ .str = "+", .left = 5.0f, .right = 5.1f, .type = OperatorType_add, };
-    } else if (type == TokenType_minus) {
-        return Operator{ .str = "-", .left = 5.0f, .right = 5.1f, .type = OperatorType_subtract, };
-    } else if (type == TokenType_double_equal){
-        return Operator{ .str="==", .left = 4.0f, .right = 4.1f, .type = OperatorType_equal, };
-    } else if (type == TokenType_bang_equal){
-        return Operator{ .str="!=", .left = 4.0f, .right = 4.1f, .type = OperatorType_not_equal, };
-    } else if (type == TokenType_and) {
-        return Operator{ .str = "and", .left = 3.0f, .right = 3.1f, .type = OperatorType_and, };
-    } else if (type == TokenType_or) {
-        return Operator{ .str = "or", .left = 2.0f, .right = 2.1f, .type = OperatorType_or, };
-    } else {
-        return Operator{ .str="not_operator", .left = 0.0f, .right = 0.0f, .type = OperatorType_none};
+    if (type == TokenType_astricks) {            return Operator{ .str="*",     .left = 6.0f, .right = 6.1f, .type = OperatorType_mult, };
+    } else if (type == TokenType_forward_slash){ return Operator{ .str="/",     .left = 6.0f, .right = 6.1f, .type = OperatorType_divide, };
+    } else if (type == TokenType_plus) {         return Operator{ .str = "+",   .left = 5.0f, .right = 5.1f, .type = OperatorType_add, };
+    } else if (type == TokenType_minus) {        return Operator{ .str = "-",   .left = 5.0f, .right = 5.1f, .type = OperatorType_subtract, };
+    } else if (type == TokenType_double_equal){  return Operator{ .str="==",    .left = 4.0f, .right = 4.1f, .type = OperatorType_equal, };
+    } else if (type == TokenType_bang_equal){    return Operator{ .str="!=",    .left = 4.0f, .right = 4.1f, .type = OperatorType_not_equal, };
+    } else if (type == TokenType_and) {          return Operator{ .str = "and", .left = 3.0f, .right = 3.1f, .type = OperatorType_and, };
+    } else if (type == TokenType_or) {           return Operator{ .str = "or",  .left = 2.0f, .right = 2.1f, .type = OperatorType_or, };
+    } else {                                     return Operator{ .str="not_operator", .left = 0.0f, .right = 0.0f, .type = OperatorType_none};
     }
 }
 

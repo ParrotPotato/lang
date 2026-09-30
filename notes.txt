@@ -109,4 +109,14 @@ left = create_binary .. // * 5 4
 
 now, since we are at the level of + we can just continue parsing this 
 
+#########################################################################################33
+
+adding pratt parser to the already exisitng language parsing code 
+
+question: 
+do you think we can have something like a unary operator with right associativity super duper high, so 
+that the next thing has to associate with itself, before parsing any further does that make sense, let 
+me see if that is correct - okay, so i tried it and it works beautifully, like genuily since we are 
+parsing expression this works so beautifully
+
 
