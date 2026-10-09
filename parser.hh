@@ -57,6 +57,7 @@
     MACRO_FUNCTION(or)\
     MACRO_FUNCTION(equal)\
     MACRO_FUNCTION(not_equal)\
+    MACRO_FUNCTION(opening_paran)\
     MACRO_FUNCTION(count)
 
 #define EXPRESSION_LIST(MACRO_FUNCTION)\
