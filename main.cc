@@ -86,6 +86,7 @@ struct Parser {
 OperatorType get_operator_type(TokenType type);
 
 struct Operator {
+    float unary_power;
     const char * str;
     float left, right;
     OperatorType type;
@@ -122,7 +123,7 @@ struct GroupExp {
 };
 
 struct CallExp {
-    StringView call_name;
+    Expression * function;
     GroupExp   group;
 };
 
@@ -186,11 +187,11 @@ void print_full_expression(Expression exp) {
         }
         printf(")");
     } else if (exp.type == ExpressionType_call) {
-        int len = exp.exp.call.call_name.len;
-        char * data = exp.exp.call.call_name.data;
-        printf(" %.*s", len, data); 
+        printf("(");
+        print_full_expression(*exp.exp.call.function);
         Expression ro_exp = read_only_conv_group_to_expression(&exp.exp.call.group);
         print_full_expression(ro_exp);
+        printf(")");
     }
 }
 
@@ -316,13 +317,13 @@ StringLiteralExp parse_string_literal_expression(Parser * parser) {
     return exp;
 }
 
-CallExp parse_call_expression(Parser * parser) {
-    CallExp exp = {}; 
-    exp.call_name = parser->curr().at;
-    parser->next();
-    exp.group = parse_group_expression(parser);
-    return exp;
-}
+//CallExp parse_call_expression(Parser * parser) {
+//    CallExp exp = {}; 
+//    exp.call_name = parser->curr().at;
+//    parser->next();
+//    exp.group = parse_group_expression(parser);
+//    return exp;
+//}
 
 Operator get_operator(TokenType type);
 Expression parse_node(Parser * parser) {
@@ -365,24 +366,26 @@ Expression parse_node(Parser * parser) {
         left.exp.group = parse_group_expression(parser); // parse the entire thing, this works perfectly
         return left;
     }
+    // NOTE(nitesh: 2026-10-09) : this entire section needs to be re-written because identifier can be a chain of [node].[node][0].[node].function_call().[node]
     else if(parser->curr().type == TokenType_identifier) {
         printf("- found identifier\n");
-        // this is a function call
-        if (parser->peek(1).type == TokenType_opening_paran) {
-            printf("- parsing identifier as call expression\n");
-            CallExp call = parse_call_expression(parser);
-            Expression exp = {};
-            exp.type = ExpressionType_call;
-            exp.exp.call = call;
-            return exp;
-        }
-        else {
-            printf("- parsing identifier name expression\n");
-            Expression left = {};
-            left.type = ExpressionType_name;
-            left.exp.name = parse_name_expression(parser);
-            return left;
-        }
+        // NOTE(nitesh: 2026-10-09): this does not account for member function (methods as people call them) 
+        // and dereference type function calls
+        // 
+        // this is a function call 
+        //if (parser->peek(1).type == TokenType_opening_paran) {
+        //    printf("- parsing identifier as call expression\n");
+        //    CallExp call = parse_call_expression(parser);
+        //    Expression exp = {};
+        //    exp.type = ExpressionType_call;
+        //    exp.exp.call = call;
+        //    return exp;
+        //}
+        printf("- parsing identifier name expression\n");
+        Expression left = {};
+        left.type = ExpressionType_name;
+        left.exp.name = parse_name_expression(parser);
+        return left;
     }
     return Expression{};
 }
@@ -398,11 +401,33 @@ Expression create_binary_expression(Expression * left, Expression * right, Opera
     return binary;
 }
 
+// this ( as operator in my mind only comes in one place can be part of a function call 
+// myFunc(x, y); -> function call 
+// func myFunc(x : i32, y ; 32) -> void / -> (result : f32) -> function declaration 
+Expression parse_opening_paran_as_operator(Parser * parser, Expression left) { // we need to return an expression for function parsing
+    // assertion check 
+    if (parser->curr().type != TokenType_opening_paran) {
+        printf("parse opening paran when current token in not opening_paran i.e. '('\n");
+        exit(-1);
+    }
+    GroupExp group = parse_group_expression(parser);
+    CallExp call = {};
+    call.function = (Expression *)malloc(sizeof(Expression));
+    *call.function = left;
+    call.group = group;
+    return Expression{ .type = ExpressionType_call, .exp.call = call};
+}
+
 Expression pratt_parse_expression(Parser * parser, float min_val) {
     // moves the parser ahead if requried
-    Expression left_node = parse_node(parser);
+    Expression left_node = parse_node(parser); 
     while (true) {
         Operator op = get_operator(parser->curr().type);
+        if (op.type == OperatorType_opening_paran) {
+            left_node = parse_opening_paran_as_operator(parser, left_node);
+            continue; 
+        }
+
         if (op.left == 0.0f || min_val > op.left) break;
         parser->next();
         Expression right_node = pratt_parse_expression(parser, op.right);
@@ -883,20 +908,30 @@ OperatorType get_operator_type(TokenType type) {
 }
 
 Operator get_operator(TokenType type) {
-    if (type == TokenType_astricks) {            return Operator{ .str="*",     .left = 6.0f, .right = 6.1f, .type = OperatorType_mult, };
-    } else if (type == TokenType_forward_slash){ return Operator{ .str="/",     .left = 6.0f, .right = 6.1f, .type = OperatorType_divide, };
-    } else if (type == TokenType_plus) {         return Operator{ .str = "+",   .left = 5.0f, .right = 5.1f, .type = OperatorType_add, };
-    } else if (type == TokenType_minus) {        return Operator{ .str = "-",   .left = 5.0f, .right = 5.1f, .type = OperatorType_subtract, };
-    } else if (type == TokenType_double_equal){  return Operator{ .str="==",    .left = 4.0f, .right = 4.1f, .type = OperatorType_equal, };
-    } else if (type == TokenType_bang_equal){    return Operator{ .str="!=",    .left = 4.0f, .right = 4.1f, .type = OperatorType_not_equal, };
-    } else if (type == TokenType_and) {          return Operator{ .str = "and", .left = 3.0f, .right = 3.1f, .type = OperatorType_and, };
-    } else if (type == TokenType_or) {           return Operator{ .str = "or",  .left = 2.0f, .right = 2.1f, .type = OperatorType_or, };
-    } else {                                     return Operator{ .str="not_operator", .left = 0.0f, .right = 0.0f, .type = OperatorType_none};
+    if (type == TokenType_astricks) {            return Operator{ .unary_power =  0, .str="*",     .left = 6.0f,  .right = 6.1f,  .type = OperatorType_mult, };
+    } else if (type == TokenType_forward_slash){ return Operator{ .unary_power =  0, .str="/",     .left = 6.0f,  .right = 6.1f,  .type = OperatorType_divide, };
+    } else if (type == TokenType_dot) {          return Operator{ .unary_power =  0, .str = ".",   .left = 20.0f, .right = 20.1f, .type = OperatorType_subtract, };
+    } else if (type == TokenType_plus) {         return Operator{ .unary_power =  0, .str = "+",   .left = 5.0f,  .right = 5.1f,  .type = OperatorType_add, };
+    } else if (type == TokenType_minus) {        return Operator{ .unary_power = 15, .str = "-",   .left = 5.0f,  .right = 5.1f,  .type = OperatorType_subtract, };
+    } else if (type == TokenType_double_equal){  return Operator{ .unary_power =  0, .str="==",    .left = 4.0f,  .right = 4.1f,  .type = OperatorType_equal, };
+    } else if (type == TokenType_bang) {         return Operator{ .unary_power = 15, .str="!",     .left = 4.0f,  .right = 4.1f,  .type = OperatorType_not_equal, };
+    } else if (type == TokenType_bang_equal){    return Operator{ .unary_power =  0, .str="!=",    .left = 4.0f,  .right = 4.1f,  .type = OperatorType_not_equal, };
+    } else if (type == TokenType_and) {          return Operator{ .unary_power =  0, .str = "and", .left = 3.0f,  .right = 3.1f,  .type = OperatorType_and, };
+    } else if (type == TokenType_or) {           return Operator{ .unary_power =  0, .str = "or",  .left = 2.0f,  .right = 2.1f,  .type = OperatorType_or, };
+    } else if (type == TokenType_opening_paran){ return Operator{ .unary_power =  0, .str="(",     .left = 1.0f,  .right = 1.1f,  .type = OperatorType_opening_paran};
+    } else {                                     return Operator{ .unary_power =  0, .str="not_operator", .left = 0.0f, .right = 0.0f, .type = OperatorType_none};
     }
 }
 
 bool is_unary_operator(TokenType type) {
-    return (type == TokenType_plus || type == TokenType_minus || type == TokenType_bang || type == TokenType_forward_slash);
+    return (
+        type == TokenType_plus || 
+        type == TokenType_minus || 
+        type == TokenType_bang || 
+        type == TokenType_forward_slash || 
+        type == TokenType_dot
+    );
+
 }
 
 // NOTE(nitesh): check which enums are missing here
