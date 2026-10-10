@@ -7,7 +7,7 @@ TODO:
     - func decl     
     - var decl 
     - return  // done 
-    - defer   // 
+    - defer   // done
 - implementing a struct dereference, array and array indexing 
 - define language grammar 
     - how are things declared
@@ -26,7 +26,6 @@ TODO:
 automatically initialize stuff to be 0 of whatever their type can be
 */
 
-#include <fstream>
 #define PRINT_EXPRESSION
 #define PRINT_TOKEN
 #include <stdlib.h>
@@ -123,8 +122,13 @@ struct GroupExp {
 };
 
 struct CallExp {
-    Expression * function;
+    Expression * prefix;
     GroupExp   group;
+};
+
+struct IndexExp {
+    Expression * prefix;
+    Expression * idx_exp;
 };
 
 struct Expression {
@@ -137,6 +141,7 @@ struct Expression {
         GroupExp            group;
         NameExp             name;
         CallExp             call;
+        IndexExp            idx;
     } exp ;
 };
 
@@ -188,7 +193,7 @@ void print_full_expression(Expression exp) {
         printf(")");
     } else if (exp.type == ExpressionType_call) {
         printf("(");
-        print_full_expression(*exp.exp.call.function);
+        print_full_expression(*exp.exp.call.prefix);
         Expression ro_exp = read_only_conv_group_to_expression(&exp.exp.call.group);
         print_full_expression(ro_exp);
         printf(")");
@@ -412,11 +417,31 @@ Expression parse_opening_paran_as_operator(Parser * parser, Expression left) { /
     }
     GroupExp group = parse_group_expression(parser);
     CallExp call = {};
-    call.function = (Expression *)malloc(sizeof(Expression));
-    *call.function = left;
+    call.prefix= (Expression *)malloc(sizeof(Expression));
+    *call.prefix= left;
     call.group = group;
     return Expression{ .type = ExpressionType_call, .exp.call = call};
 }
+
+Expression parse_opening_square_bracket_as_operator(Parser * parser, Expression left) {
+    if (parser->curr().type != TokenType_opening_square_bracket) {
+        printf("parse opening square bracked when current token is not opening square bracket i.e. '['\n");
+        exit(-1);
+    }
+    parser->next();
+    Expression idx_exp = pratt_parse_expression(parser, 0);
+    if (parser->curr().type != TokenType_closing_square_bracket) {
+        printf("expedted ] after [, but cloudn't find it");
+        exit(-1);
+    }
+    parser->next();
+    IndexExp idx = {};
+    idx.idx_exp = (Expression *)malloc(sizeof(Expression));
+    idx.prefix = (Expression *)malloc(sizeof(Expression));
+    *idx.idx_exp = idx_exp;
+    *idx.prefix = left;
+    return Expression{ .type = ExpressionType_index, .exp.idx = idx};
+};
 
 Expression pratt_parse_expression(Parser * parser, float min_val) {
     // moves the parser ahead if requried
@@ -919,6 +944,10 @@ Operator get_operator(TokenType type) {
     } else if (type == TokenType_and) {          return Operator{ .unary_power =  0, .str = "and", .left = 3.0f,  .right = 3.1f,  .type = OperatorType_and, };
     } else if (type == TokenType_or) {           return Operator{ .unary_power =  0, .str = "or",  .left = 2.0f,  .right = 2.1f,  .type = OperatorType_or, };
     } else if (type == TokenType_opening_paran){ return Operator{ .unary_power =  0, .str="(",     .left = 1.0f,  .right = 1.1f,  .type = OperatorType_opening_paran};
+    } else if (type == TokenType_opening_square_bracket) { return Operator{ .unary_power =  0, .str="(",     .left = 0.0f,  .right = 0.0f,  .type = OperatorType_opening_paran};
+    } else if (type == TokenType_closing_square_bracket) { return Operator{ .unary_power =  0, .str=")",     .left = 0.0f,  .right = 0.0f,  .type = OperatorType_closing_paran};
+    } else if (type == TokenType_opening_square_bracket) { return Operator{ .unary_power =  0, .str="[",     .left = 0.0f,  .right = 0.0f,  .type = OperatorType_opening_square_bracket};
+    } else if (type == TokenType_closing_square_bracket) { return Operator{ .unary_power =  0, .str="]",     .left = 0.0f,  .right = 0.0f,  .type = OperatorType_closing_square_bracket};
     } else {                                     return Operator{ .unary_power =  0, .str="not_operator", .left = 0.0f, .right = 0.0f, .type = OperatorType_none};
     }
 }
