@@ -67,6 +67,7 @@
     MACRO_FUNCTION(none)\
     MACRO_FUNCTION(literal_number)\
     MACRO_FUNCTION(literal_string)\
+    MACRO_FUNCTION(literal_boolean)\
     MACRO_FUNCTION(name)\
     MACRO_FUNCTION(binary)\
     MACRO_FUNCTION(unary)\
@@ -78,6 +79,7 @@
 #define STATEMENT_LIST(MACRO_FUNCTION)\
     MACRO_FUNCTION(none)\
     MACRO_FUNCTION(assign)\
+    MACRO_FUNCTION(expression)\
     MACRO_FUNCTION(if)\
     MACRO_FUNCTION(return)\
     MACRO_FUNCTION(defer)\

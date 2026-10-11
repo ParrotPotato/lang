@@ -9,6 +9,8 @@ TODO:
     - return  // done 
     - defer   // done
 - implementing a struct dereference, array and array indexing 
+    - array indexing         // done
+    - function call refactor // done
 - define language grammar 
     - how are things declared
     - how are thiings asisgned 
@@ -95,6 +97,11 @@ struct NameExp {
     StringView value;
 };
 
+
+struct BoolLiteralExp {
+    bool value;
+};
+
 struct NumberLiteralExp {
     int value;
 };
@@ -136,6 +143,7 @@ struct Expression {
     union {
         BinaryExp           binary;
         UniaryExp           unary;
+        BoolLiteralExp      boolean;
         NumberLiteralExp    number;
         StringLiteralExp    string;
         GroupExp            group;
@@ -160,6 +168,9 @@ void print_full_expression(Expression exp) {
         int len = exp.name.value.len;
         char * data = exp.name.value.data;
         printf(" %.*s", len, data);
+    }
+    else if (exp.type == ExpressionType_literal_boolean) {
+        printf(" %s", exp.boolean.value ? "true" : "false");
     }
     else if (exp.type == ExpressionType_literal_number) {
         printf(" %d", exp.number.value);
@@ -214,7 +225,7 @@ struct BlockStat {
 };
 
 struct AssignStat {
-    StringView target; 
+    Expression target; 
     Expression value;
 };
 
@@ -229,32 +240,42 @@ struct ReturnStat {
     Expression exp;
 };
 
+struct ExpressionStat {
+    Expression exp;
+};
+
 struct Statement {
     StatementType type;
     union {
-        AssignStat assign;
-        ReturnStat ret;
-        IfStat     ifcon; // if statements
-        BlockStat  block;
-    } smt ;
+        ExpressionStat exp;
+        AssignStat     assign;
+        ReturnStat     ret;
+        IfStat         ifcon; // if statements
+        BlockStat      block;
+    };
 };
 
 void print_full_statement(Statement stmt) {
-    if (stmt.type  == StatementType_assign) {
-        int len = stmt.smt.assign.target.len;
-        char * data = stmt.smt.assign.target.data;
-        printf("%.*s = ", len, data); print_full_expression(stmt.smt.assign.value);
+    if (stmt.type  == StatementType_return) {
+        printf("return ");
+        print_full_expression(stmt.ret.exp);
+        printf("\n");
+    }
+    else if (stmt.type  == StatementType_assign) {
+        print_full_expression(stmt.assign.target);
+        printf(" = "); 
+        print_full_expression(stmt.assign.value);
         printf("\n");
     }
     else if (stmt.type == StatementType_block) {
         printf(" -- block start -- \n");
-        for(int i = 0 ; i < stmt.smt.block.statement_count ; i++) {
-            print_full_statement(stmt.smt.block.statements[i]);
+        for(int i = 0 ; i < stmt.block.statement_count ; i++) {
+            print_full_statement(stmt.block.statements[i]);
         }
         printf(" -- block end -- \n");
     }
-    else if (stmt.type == StatementType_if ){
-        IfStat ifst = stmt.smt.ifcon;
+    else if (stmt.type == StatementType_if){
+        IfStat ifst = stmt.ifcon;
         printf(" -- if start -- \n");
         if (ifst.condition_prefix)  {
             printf("condition:");
@@ -265,14 +286,18 @@ void print_full_statement(Statement stmt) {
         printf("expression: ");
         print_full_expression(ifst.condition_expression);
         printf("\n");
-        print_full_statement({.type = StatementType_block, .smt= {.block = ifst.if_block}});
+        print_full_statement({.type = StatementType_block, .block = ifst.if_block});
         if (ifst.else_block) {
             printf("else :\n");
-            print_full_statement({.type = StatementType_block, .smt = {.block = *ifst.else_block}});
+            print_full_statement({.type = StatementType_block, .block = *ifst.else_block});
             printf("\n");
         }
         printf(" -- if end -- \n");
-    } 
+    }  else if (stmt.type == StatementType_expression){
+        ExpressionStat exp = stmt.exp;
+        print_full_expression(exp.exp);
+        printf("\n");
+    }
 }
 
 Expression pratt_parse_expression(Parser * parser, float min_val);
@@ -301,9 +326,11 @@ GroupExp parse_group_expression(Parser *parser) {
             parser->next();
         }
     }
-    if (parser->curr().type == TokenType_closing_paran) {
-        parser->next();
+    if (parser->curr().type != TokenType_closing_paran) {
+        printf("line-no %d: expected ) to close (\n", parser->curr().line_no);
+        exit(-1);
     }
+    parser->next();
     expressions = (Expression *)realloc(expressions, sizeof(Expression) * group_size);
     group.expression_count = group_size;
     group.expressions = expressions;
@@ -328,19 +355,20 @@ StringLiteralExp parse_string_literal_expression(Parser * parser) {
     return exp;
 }
 
-//CallExp parse_call_expression(Parser * parser) {
-//    CallExp exp = {}; 
-//    exp.call_name = parser->curr().at;
-//    parser->next();
-//    exp.group = parse_group_expression(parser);
-//    return exp;
-//}
 
 Operator get_operator(TokenType type);
 Expression parse_node(Parser * parser) {
     if (parser->curr().type == TokenType_semi_colon) {
         printf("unexpected ; encountered exit(-1)");
         exit(1);
+    }
+    else if (parser->curr().type == TokenType_bool_false || parser->curr().type == TokenType_bool_true){
+        printf("- found boolean lietral\n");
+        Expression left = {};
+        left.type = ExpressionType_literal_boolean;
+        left.boolean.value = parser->curr().type == TokenType_bool_true;
+        parser->next();
+        return left;
     }
     else if(parser->curr().type == TokenType_number_literal) {
         printf("- found number literal\n");
@@ -365,9 +393,7 @@ Expression parse_node(Parser * parser) {
         left.unary.opt = get_operator(parser->curr().type);
         left.unary.exp = (Expression *) calloc(1, sizeof(Expression));
         parser->next();
-        *left.unary.exp = pratt_parse_expression(parser, 100); // NOTE(nitesh): 100 here is supposed to be something really really big, 
-                                                                   // if we ever read the binding power of hundred incrementally, this 
-                                                                   // language might have gone out of hand a bit .. haha
+        *left.unary.exp = pratt_parse_expression(parser, left.unary.opt.unary_power); 
         return left;
     }
     else if (parser->curr().type == TokenType_opening_paran) {
@@ -398,6 +424,8 @@ Expression parse_node(Parser * parser) {
         left.name = parse_name_expression(parser);
         return left;
     }
+    printf("line-no %d: unexpected token %s in expression\n", parser->curr().line_no, print_token(parser->curr().type));
+    exit(-1);
     return Expression{};
 }
 
@@ -478,16 +506,19 @@ Statement parse_statement(Parser * parser);
 ReturnStat parse_return_statment(Parser * parser){
     ReturnStat ret = {};
     parser->next();
-    ret.exp = pratt_parse_expression(parser, 0.0);
+    if (parser->curr().type != TokenType_semi_colon) ret.exp = pratt_parse_expression(parser, 0.0f);
     return ret;
 }
 
-AssignStat parse_assignment_statement(Parser * parser) {
+AssignStat parse_assignment_statement(Parser * parser, Expression left_prefix) {
+    if (parser->curr().type != TokenType_equal) {
+        printf("line %d; assignment operator expects parsing = after node expression\n", parser->curr().line_no);
+        exit(-1);
+    }
+    parser->next();
     printf("[] parsing assignment statment\n");
     AssignStat ass = {};
-    ass.target = parser->curr().at;
-    parser->next();
-    parser->next();
+    ass.target = left_prefix;
     ass.value = pratt_parse_expression(parser, 0.0);
     return ass;
 }
@@ -544,6 +575,7 @@ IfStat parse_if_statement (Parser * parser) {
         printf("- found condition prefix\n");
         Statement smt = parse_statement(parser);
         ifsmt.condition_prefix = (Statement *) calloc(1, sizeof(smt));
+        *ifsmt.condition_prefix = smt;
         parser->next(); 
     }  else {
         printf("- no condition prefix found\n");
@@ -566,7 +598,7 @@ IfStat parse_if_statement (Parser * parser) {
             block.statement_count = 1;
             block.statements = (Statement *) calloc(1, sizeof(Statement));
             block.statements[0].type = StatementType_if;
-            block.statements[0].smt.ifcon = elif ;
+            block.statements[0].ifcon = elif ;
             ifsmt.else_block = (BlockStat *) calloc(1, sizeof(BlockStat));
             *ifsmt.else_block = block;
         } else {
@@ -586,6 +618,7 @@ IfStat parse_if_statement (Parser * parser) {
 }
 
 Statement parse_statement(Parser * parser) {
+
     printf("[line: %d] starting statmeent parsing with token : %s\n", parser->curr().line_no, print_token(parser->curr().type));
     printf("[line: %d] text string %.*s\n", parser->curr().line_no, (int)parser->curr().at.len, (char *)parser->curr().at.data);
 
@@ -597,33 +630,41 @@ Statement parse_statement(Parser * parser) {
         ret.type = StatementType_none;
         return ret;
     }
-
-    if (parser->curr().type == TokenType_identifier) {
-        if (parser->peek(1).type == TokenType_equal) {
-            AssignStat ass = parse_assignment_statement(parser);
-            ret.type = StatementType_assign;
-            ret.smt.assign = ass;
-            return ret;
-        }
-    } 
     else if (parser->curr().type == TokenType_return) {
         ReturnStat exp = parse_return_statment(parser);
         ret.type = StatementType_return;
-        ret.smt.ret = exp;
+        ret.ret = exp;
         return ret;
     }
     else if (parser->curr().type == TokenType_if) {
         IfStat ifstat = parse_if_statement(parser);
         ret.type = StatementType_if;
-        ret.smt.ifcon = ifstat;
+        ret.ifcon = ifstat;
         return ret;
     } else if (parser->curr().type == TokenType_opening_brace) {
         BlockStat block = parse_block_statment(parser);
         ret.type = StatementType_block;
-        ret.smt.block = block;
-    } else {
-        printf("invalid token to start statement\n");
-        exit(1);
+        ret.block = block;
+        return ret;
+    }
+    else {
+        // we are not parsing something with start with an expresion 
+        // like a functionc all foo();
+        // or an assignment operator x = y + d3;
+        Expression left_prefix = pratt_parse_expression(parser, 0.0f);
+
+        if (parser->curr().type == TokenType_equal) {
+            AssignStat ass = parse_assignment_statement(parser, left_prefix);
+            ret.type = StatementType_assign;
+            ret.assign = ass;
+            return ret;
+        } else { 
+            // this is a stand along statemenet which is a single expression
+            ExpressionStat exp = {.exp = left_prefix};
+            ret.exp = exp;
+            ret.type = StatementType_expression;
+            return ret;
+        }
     }
     return {};
 }
