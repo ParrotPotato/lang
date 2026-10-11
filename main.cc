@@ -240,6 +240,10 @@ struct ReturnStat {
     Expression exp;
 };
 
+struct DeferStat {
+    Statement * stmt;
+};
+
 struct ExpressionStat {
     Expression exp;
 };
@@ -250,6 +254,7 @@ struct Statement {
         ExpressionStat exp;
         AssignStat     assign;
         ReturnStat     ret;
+        DeferStat      defer;
         IfStat         ifcon; // if statements
         BlockStat      block;
     };
@@ -258,7 +263,14 @@ struct Statement {
 void print_full_statement(Statement stmt) {
     if (stmt.type  == StatementType_return) {
         printf("return ");
-        print_full_expression(stmt.ret.exp);
+        if (stmt.ret.exp.type != ExpressionType_none){
+            print_full_expression(stmt.ret.exp);
+        }
+        printf("\n");
+    }
+    else if (stmt.type  == StatementType_defer) {
+        printf("defer ");
+        print_full_statement(*stmt.defer.stmt);
         printf("\n");
     }
     else if (stmt.type  == StatementType_assign) {
@@ -634,6 +646,18 @@ Statement parse_statement(Parser * parser) {
         ReturnStat exp = parse_return_statment(parser);
         ret.type = StatementType_return;
         ret.ret = exp;
+        return ret;
+    }
+    else if (parser->curr().type == TokenType_defer) {
+        if (parser->peek(1).type == TokenType_semi_colon) {
+            printf("line-no %d: defer should be followed by a non empty statemetn\n", parser->curr().line_no);
+            exit(-1);
+        }
+        parser->next();
+        Statement stmt = parse_statement(parser);
+        ret.type = StatementType_defer;
+        ret.defer.stmt = (Statement *) calloc(1, sizeof(Statement));
+        *ret.defer.stmt = stmt;
         return ret;
     }
     else if (parser->curr().type == TokenType_if) {
