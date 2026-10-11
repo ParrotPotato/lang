@@ -4,8 +4,8 @@ TODO:
     - assign          // done 
     - if statement    // done
     - block statmeent // done 
-    - return  // done 
-    - defer   // done
+    - return          // done 
+    - defer           // done
 - things to be fixed 
     - unknown characters: x = a % b is parsed as x = exp(a) exp(%) exp(b) -> unknown operator is expression 
     - optional commas: f(a b) is acceptable as f(a, b)
@@ -66,7 +66,6 @@ struct Cursor {
 };
 
 void eat_white_space(Cursor * cursor);
-bool is_binary_operator(TokenType type);
 bool is_unary_operator(TokenType type);
 
 struct Token {
@@ -175,8 +174,6 @@ Expression read_only_conv_group_to_expression(GroupExp * gp) {
     
 
 void print_full_expression(Expression exp) {
-
-    // printf("type(%s)", print_expression(exp.type));
     if (exp.type == ExpressionType_name) {
         int len = exp.name.value.len;
         char * data = exp.name.value.data;
@@ -1052,28 +1049,6 @@ bool is_unary_operator(TokenType type) {
         type == TokenType_bang
     );
 
-}
-
-// NOTE(nitesh): check which enums are missing here
-bool is_binary_operator(TokenType type) {
-    switch (type){
-        case TokenType_plus:
-        case TokenType_minus:
-        case TokenType_astricks:
-        case TokenType_forward_slash:
-        case TokenType_and:
-        case TokenType_or:
-        case TokenType_equal:
-        case TokenType_double_equal:
-        case TokenType_bang_equal:
-        case TokenType_opening_angle_bracket: // less than 
-        case TokenType_closing_angle_bracket: // greater than 
-        case TokenType_less_than_equal:
-        case TokenType_greater_than_equal:
-        case TokenType_dot:
-            return true;
-    }
-    return false;
 }
 
 bool is_alpha(char a) {
