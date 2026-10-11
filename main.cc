@@ -998,6 +998,10 @@ Operator get_operator(TokenType type) {
     } else if (type == TokenType_or) {                     return Operator{ .unary_power =  0, .str = "or",  .left = 2.0f,   .right = 2.1f,  .type = OperatorType_or, };
     } else if (type == TokenType_opening_paran){           return Operator{ .unary_power =  0, .str="(",     .left = 20.0f,  .right = 0.0f,  .type = OperatorType_opening_paran};
     } else if (type == TokenType_closing_paran){           return Operator{ .unary_power =  0, .str=")",     .left = 0.0f,   .right = 0.0f,  .type = OperatorType_closing_paran};
+    } else if (type == TokenType_opening_angle_bracket) {  return Operator{ .unary_power =  0, .str="<",     .left = 4.5f,   .right = 4.6f,  .type = OperatorType_lesser, };
+    } else if (type == TokenType_closing_angle_bracket) {  return Operator{ .unary_power =  0, .str=">",     .left = 4.5f,   .right = 4.6f,  .type = OperatorType_greater, };
+    } else if (type == TokenType_less_than_equal) {        return Operator{ .unary_power =  0, .str="<=",    .left = 4.5f,   .right = 4.6f,  .type = OperatorType_lesser_equal, };
+    } else if (type == TokenType_greater_than_equal) {     return Operator{ .unary_power =  0, .str=">=",    .left = 4.5f,   .right = 4.6f,  .type = OperatorType_greater_equal, };
     } else if (type == TokenType_opening_square_bracket) { return Operator{ .unary_power =  0, .str="[",     .left = 20.0f,  .right = 0.0f,  .type = OperatorType_opening_square_bracket};
     } else if (type == TokenType_closing_square_bracket) { return Operator{ .unary_power =  0, .str="]",     .left = 0.0f,   .right = 0.0f,  .type = OperatorType_closing_square_bracket};
     } else {                                     return Operator{ .unary_power =  0, .str="not_operator", .left = 0.0f, .right = 0.0f, .type = OperatorType_none};

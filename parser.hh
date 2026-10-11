@@ -61,6 +61,10 @@
     MACRO_FUNCTION(closing_paran)\
     MACRO_FUNCTION(opening_square_bracket)\
     MACRO_FUNCTION(closing_square_bracket)\
+    MACRO_FUNCTION(lesser)\
+    MACRO_FUNCTION(greater)\
+    MACRO_FUNCTION(lesser_equal)\
+    MACRO_FUNCTION(greater_equal)\
     MACRO_FUNCTION(count)
 
 #define EXPRESSION_LIST(MACRO_FUNCTION)\
