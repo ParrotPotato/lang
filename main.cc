@@ -4,10 +4,23 @@ TODO:
     - assign          // done 
     - if statement    // done
     - block statmeent // done 
-    - func decl     
-    - var decl 
     - return  // done 
     - defer   // done
+- things to be fixed 
+    - unknown characters: x = a % b is parsed as x = exp(a) exp(%) exp(b) -> unknown operator is expression 
+    - optional commas: f(a b) is acceptable as f(a, b)
+    - right side of .: a.1 is valid
+    - empty file returns in segmentation fault
+    - unparsed keyword 
+        - for 
+        - break
+        - continue
+        - switch 
+        - func 
+        - print
+- new feature to be impelmented 
+    - func decl     
+    - var decl 
 - implementing a struct dereference, array and array indexing 
     - array indexing         // done
     - function call refactor // done
@@ -816,7 +829,7 @@ ParsedTokens fetch_tokens(String file_source) {
             
             case '.': token.type = TokenType_dot; break;
             case ',': token.type = TokenType_comma; break;
-            case ':': token.type = TokenType_comma; break;
+            case ':': token.type = TokenType_colon; break;
             case ';': token.type = TokenType_semi_colon; break;
             case '}': token.type = TokenType_closing_brace; break;
             case '{': token.type = TokenType_opening_brace; break;
@@ -1012,11 +1025,11 @@ OperatorType get_operator_type(TokenType type) {
 Operator get_operator(TokenType type) {
     if (type == TokenType_astricks) {                      return Operator{ .unary_power =  0, .str="*",     .left = 6.0f,   .right = 6.1f,  .type = OperatorType_mult, };
     } else if (type == TokenType_forward_slash){           return Operator{ .unary_power =  0, .str="/",     .left = 6.0f,   .right = 6.1f,  .type = OperatorType_divide, };
-    } else if (type == TokenType_dot) {                    return Operator{ .unary_power =  0, .str = ".",   .left = 20.0f,  .right = 20.1f, .type = OperatorType_subtract, };
+    } else if (type == TokenType_dot) {                    return Operator{ .unary_power =  0, .str = ".",   .left = 20.0f,  .right = 20.1f, .type = OperatorType_dot, };
     } else if (type == TokenType_plus) {                   return Operator{ .unary_power =  0, .str = "+",   .left = 5.0f,   .right = 5.1f,  .type = OperatorType_add, };
     } else if (type == TokenType_minus) {                  return Operator{ .unary_power = 15, .str = "-",   .left = 5.0f,   .right = 5.1f,  .type = OperatorType_subtract, };
     } else if (type == TokenType_double_equal){            return Operator{ .unary_power =  0, .str="==",    .left = 4.0f,   .right = 4.1f,  .type = OperatorType_equal, };
-    } else if (type == TokenType_bang) {                   return Operator{ .unary_power = 15, .str="!",     .left = 4.0f,   .right = 4.1f,  .type = OperatorType_not_equal, };
+    } else if (type == TokenType_bang) {                   return Operator{ .unary_power = 15, .str="!",     .left = 0.0f,   .right = 0.0f,  .type = OperatorType_not_equal, };
     } else if (type == TokenType_bang_equal){              return Operator{ .unary_power =  0, .str="!=",    .left = 4.0f,   .right = 4.1f,  .type = OperatorType_not_equal, };
     } else if (type == TokenType_and) {                    return Operator{ .unary_power =  0, .str = "and", .left = 3.0f,   .right = 3.1f,  .type = OperatorType_and, };
     } else if (type == TokenType_or) {                     return Operator{ .unary_power =  0, .str = "or",  .left = 2.0f,   .right = 2.1f,  .type = OperatorType_or, };
@@ -1036,9 +1049,7 @@ bool is_unary_operator(TokenType type) {
     return (
         type == TokenType_plus || 
         type == TokenType_minus || 
-        type == TokenType_bang || 
-        type == TokenType_forward_slash || 
-        type == TokenType_dot
+        type == TokenType_bang
     );
 
 }
@@ -1059,6 +1070,7 @@ bool is_binary_operator(TokenType type) {
         case TokenType_closing_angle_bracket: // greater than 
         case TokenType_less_than_equal:
         case TokenType_greater_than_equal:
+        case TokenType_dot:
             return true;
     }
     return false;

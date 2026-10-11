@@ -27,6 +27,7 @@
     MACRO_FUNCTION(bang_equal)\
     MACRO_FUNCTION(double_quote)\
     MACRO_FUNCTION(semi_colon)\
+    MACRO_FUNCTION(colon)\
     MACRO_FUNCTION(bool_true)\
     MACRO_FUNCTION(bool_false)\
     MACRO_FUNCTION(if)\
@@ -49,6 +50,7 @@
 
 #define OPERATOR_LIST(MACRO_FUNCTION) \
     MACRO_FUNCTION(none)\
+    MACRO_FUNCTION(dot)\
     MACRO_FUNCTION(add)\
     MACRO_FUNCTION(subtract)\
     MACRO_FUNCTION(mult)\
