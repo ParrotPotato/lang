@@ -46,6 +46,35 @@ automatically initialize stuff to be 0 of whatever their type can be
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
+
+// NOTE(nitesh): basicall a tee functionality so that we don't have to worry about stuff 
+struct Tee {
+    FILE * fp1;
+    FILE * fp2;
+    void print(const char * buf, ...) {
+        va_list args;
+        va_start(args, buf);
+
+        if (fp1) {
+            if (fp2) {
+                va_list args_copy;
+                va_copy(args_copy, args);
+                vfprintf(fp1, buf, args_copy);
+                va_end(args_copy);
+            }
+            else {
+                vfprintf(fp1, buf, args);
+            }
+        } 
+        if (fp2) {
+            vfprintf(fp2, buf, args);
+        }
+        va_end(args);
+    }
+};
+
+Tee ast_tee = {};
 
 #include "parser.hh"
 
@@ -177,53 +206,53 @@ void print_full_expression(Expression exp) {
     if (exp.type == ExpressionType_name) {
         int len = exp.name.value.len;
         char * data = exp.name.value.data;
-        printf(" %.*s", len, data);
+        ast_tee.print(" %.*s", len, data);
     }
     else if (exp.type == ExpressionType_literal_boolean) {
-        printf(" %s", exp.boolean.value ? "true" : "false");
+        ast_tee.print(" %s", exp.boolean.value ? "true" : "false");
     }
     else if (exp.type == ExpressionType_literal_number) {
-        printf(" %d", exp.number.value);
+        ast_tee.print(" %d", exp.number.value);
     }
     else if (exp.type == ExpressionType_unary) {
-    printf(" (");
-        printf("%s", exp.unary.opt.str);
+        ast_tee.print(" (");
+        ast_tee.print("%s", exp.unary.opt.str);
         print_full_expression(*exp.unary.exp);
-    printf(")");
+        ast_tee.print(")");
     }
     else if (exp.type == ExpressionType_literal_string) {
         int len = exp.string.value.len;
         char * data = exp.string.value.data;
-        printf(" \"%.*s\"", len, data);
+        ast_tee.print(" \"%.*s\"", len, data);
     }
     else if (exp.type == ExpressionType_binary) {
-    printf(" (");
-        printf("%s", exp.binary.opt.str);
+        ast_tee.print(" (");
+        ast_tee.print("%s", exp.binary.opt.str);
         print_full_expression(*exp.binary.left);
         print_full_expression(*exp.binary.right);
-    printf(")");
+        ast_tee.print(")");
     }
     else if (exp.type == ExpressionType_group) {
-        printf(" (");
+        ast_tee.print(" (");
         for(int i = 0 ; i < exp.group.expression_count ; i++){
             print_full_expression(exp.group.expressions[i]);
             if (i != exp.group.expression_count - 1) {
                 printf(",");
             }
         }
-        printf(")");
+        ast_tee.print(")");
     } else if (exp.type == ExpressionType_call) {
-        printf("(");
+        ast_tee.print("(");
         print_full_expression(*exp.call.prefix);
         Expression ro_exp = read_only_conv_group_to_expression(&exp.call.group);
         print_full_expression(ro_exp);
-        printf(")");
+        ast_tee.print(")");
     } else if (exp.type == ExpressionType_index) {
-        printf("(");
-        printf("idx ");
+        ast_tee.print("(");
+        ast_tee.print("idx ");
         print_full_expression(*exp.idx.prefix);
         print_full_expression(*exp.idx.idx_exp);
-        printf(")");
+        ast_tee.print(")");
     }
 }
 
@@ -272,53 +301,53 @@ struct Statement {
 
 void print_full_statement(Statement stmt) {
     if (stmt.type  == StatementType_return) {
-        printf("return ");
+        ast_tee.print("return ");
         if (stmt.ret.exp.type != ExpressionType_none){
             print_full_expression(stmt.ret.exp);
         }
-        printf("\n");
+        ast_tee.print("\n");
     }
     else if (stmt.type  == StatementType_defer) {
-        printf("defer ");
+        ast_tee.print("defer ");
         print_full_statement(*stmt.defer.stmt);
-        printf("\n");
+        ast_tee.print("\n");
     }
     else if (stmt.type  == StatementType_assign) {
         print_full_expression(stmt.assign.target);
-        printf(" = "); 
+        ast_tee.print(" = "); 
         print_full_expression(stmt.assign.value);
-        printf("\n");
+        ast_tee.print("\n");
     }
     else if (stmt.type == StatementType_block) {
-        printf(" -- block start -- \n");
+        ast_tee.print(" -- block start -- \n");
         for(int i = 0 ; i < stmt.block.statement_count ; i++) {
             print_full_statement(stmt.block.statements[i]);
         }
-        printf(" -- block end -- \n");
+        ast_tee.print(" -- block end -- \n");
     }
     else if (stmt.type == StatementType_if){
         IfStat ifst = stmt.ifcon;
-        printf(" -- if start -- \n");
+        ast_tee.print(" -- if start -- \n");
         if (ifst.condition_prefix)  {
-            printf("condition:");
+            ast_tee.print("condition:");
             print_full_statement(*ifst.condition_prefix);
-            printf("\n");
+            ast_tee.print("\n");
         }
-        printf("if :\n");
-        printf("expression: ");
+        ast_tee.print("if :\n");
+        ast_tee.print("expression: ");
         print_full_expression(ifst.condition_expression);
-        printf("\n");
+        ast_tee.print("\n");
         print_full_statement({.type = StatementType_block, .block = ifst.if_block});
         if (ifst.else_block) {
-            printf("else :\n");
+            ast_tee.print("else :\n");
             print_full_statement({.type = StatementType_block, .block = *ifst.else_block});
-            printf("\n");
+            ast_tee.print("\n");
         }
-        printf(" -- if end -- \n");
+        ast_tee.print(" -- if end -- \n");
     }  else if (stmt.type == StatementType_expression){
         ExpressionStat exp = stmt.exp;
         print_full_expression(exp.exp);
-        printf("\n");
+        ast_tee.print("\n");
     }
 }
 
@@ -727,6 +756,18 @@ Statement * parse_statements(Parser * parser, int * out_statement_count) {
 };
 
 int main(){
+    const char * ast_out = "b.ast";
+    FILE * fp;
+    {
+        fp = fopen(ast_out, "w");
+        if (!fp)  {
+            printf("failed to open ast_output file\n");
+            exit(-1);
+        }
+        ast_tee.fp1 = stdout;
+        ast_tee.fp2 = fp;
+    }
+
     String text = load_entire_file("b.nit");
     ParsedTokens parsed_token = fetch_tokens(text);
 #ifdef PRINT_TOKEN
@@ -740,6 +781,10 @@ int main(){
     int statement_count = 0;
     Statement * statements = parse_statements(&parser, &statement_count);
     printf("%.*s\n", (int)text.len, text.data);
+
+    {
+        fclose(fp);
+    }
     return 0;
 }
 
