@@ -329,7 +329,7 @@ void print_full_statement(Statement stmt) {
         IfStat ifst = stmt.ifcon;
         ast_tee.print(" -- if start -- \n");
         if (ifst.condition_prefix)  {
-            ast_tee.print("condition:");
+            ast_tee.print("prefix:");
             print_full_statement(*ifst.condition_prefix);
             ast_tee.print("\n");
         }
